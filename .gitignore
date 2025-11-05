@@ -1,0 +1,19 @@
+# Java compiled class files
+*.class
+*.jar
+
+# Output folder
+/out/
+
+# IDE files (VS Code)
+.vscode/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Database / temporary data
+/data/
+*.db
+

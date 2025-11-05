@@ -7,7 +7,7 @@ import common.Message;
 import common.MessageType;
 
 public class ClientMain {
-    private final String host = "127.0.0.1";
+    private final String host = "localhost";
     private final int port = 2206;
     Socket socket;
     PrintWriter out;
