@@ -83,9 +83,10 @@ public class ClientHandler extends Thread {
                     continue;
                 }
 
-                // Rút bài
-                if (msg.contains(":Draw")) {
-                    if (currentRoom != null && rooms.containsKey(currentRoom)) {
+                // Rút bài dùng
+                if (msg.startsWith("DRAW;")) {
+                    String roomName = msg.split(";")[1];
+                    if (currentRoom != null && currentRoom.equals(roomName) && rooms.containsKey(currentRoom)) {
                         int playerID = rooms.get(currentRoom).getPlayerIndex(this);
                         if (playerID != -1) {
                             rooms.get(currentRoom).playerDrawCard(playerID);
