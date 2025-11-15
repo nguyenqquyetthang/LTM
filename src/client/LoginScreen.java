@@ -32,7 +32,7 @@ public class LoginScreen extends JFrame {
     private void loginAction() {
         try {
             // Đảm bảo IP và Port này khớp với Server.java
-            NetworkHandler network = new NetworkHandler("192.168.0.3", 5000);
+            NetworkHandler network = new NetworkHandler("10.21.246.235", 5000);
             String username = txtUsername.getText();
             String password = new String(txtPassword.getPassword());
 

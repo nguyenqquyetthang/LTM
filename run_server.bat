@@ -6,7 +6,7 @@ echo Classpath: %CLASSPATH%
 echo.
 
 REM Chạy server chính
-java -cp %CLASSPATH% server.ServerMain
+java -cp %CLASSPATH% server.Server
 
 echo.
 pause
