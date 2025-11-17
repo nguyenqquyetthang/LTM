@@ -10,6 +10,7 @@ public class Card {
         this.rank = rank;
     }
 
+    // them setter cho từng thuộc tính
     public String getSuit() {
         return suit;
     }

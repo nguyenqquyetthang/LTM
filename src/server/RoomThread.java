@@ -2,11 +2,128 @@ package server;
 
 import java.util.*;
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ROOM THREAD - XỬ LÝ LOGIC PHÒNG CHƠI & GAME
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Mỗi phòng có 1 RoomThread riêng xử lý:
+ * - Quản lý người chơi (thêm/xóa, host, ready status)
+ * - Logic game (rút bài, turn-based, timeout)
+ * - Tính điểm & xếp hạng
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 📡 PROTOCOL MESSAGES GỬI ĐI (Server → Client):
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * MESSAGES PHÒNG CHƠ:
+ * • ROOM_UPDATE|roomName|hostIndex|player1,player2,player3,...
+ * → Cập nhật danh sách người trong phòng
+ * → Parse: GameScreen.java dòng 382-390
+ * 
+ * • READY_STATUS|user1:true|user2:false|user3:true|...
+ * → Trạng thái sẵn sàng của từng người (guest only, host luôn ready)
+ * → Parse: GameScreen.java dòng 406-444
+ * 
+ * • YOU_ARE_HOST
+ * → Thông báo bạn trở thành host (khi host cũ rời)
+ * → Parse: GameScreen.java dòng 369-380
+ * 
+ * • KICKED;reason
+ * → Bạn bị host kick khỏi phòng
+ * 
+ * MESSAGES TRONG GAME:
+ * • GAME_START;RoomName
+ * → Ván bài bắt đầu, reset tất cả
+ * → Parse: GameScreen.java dòng 222-253
+ * 
+ * • YOUR_TURN
+ * → Đến lượt bạn rút bài (10 giây timeout)
+ * 
+ * • WAIT
+ * → Chưa đến lượt, chờ người khác
+ * 
+ * • DRAW;K♠
+ * → Bạn rút được lá bài (format: Rank+Suit)
+ * → Rank: A,2-10,J,Q,K | Suit: ♠♥♦♣
+ * → Parse: GameScreen.java dòng 568-579
+ * 
+ * • SHOW_HANDS_ALL|player1=K♠,Q♠,J♠|player2=A♥,5♦,3♣|...
+ * → Lật tất cả bài của mọi người lên (khi đủ 3 lá)
+ * → Parse: GameScreen.java dòng 293-339
+ * 
+ * • HAND_RANKS|player1:4:Straight Flush:530|player2:1:HighCard:7|...
+ * → Xếp loại tay bài của từng người
+ * → Category: 5=ThreeOfAKind, 4=StraightFlush, 3=Straight, 2=Flush, 1=HighCard
+ * → Điểm: chỉ hiện cho HighCard (modulo 10), loại khác ẩn composite score
+ * → Parse: GameScreen.java dòng 472-500
+ * 
+ * • WINNER player1 tay=Straight Flush
+ * → Thông báo người thắng
+ * → Parse: GameScreen.java dòng 278-292
+ * 
+ * • RANKING|player1:15:+3|player2:8:-1|player3:5:-1|...
+ * → Bảng xếp hạng kết quả ván (thứ tự từ cao xuống thấp theo bài)
+ * → Format: username:điểm_tổng:điểm_thay_đổi
+ * → Parse: GameScreen.java dòng 518-545
+ * 
+ * • END;RoomName
+ * → Ván kết thúc, sẵn sàng cho ván mới
+ * → ⚠️ Bài KHÔNG xóa ở đây, chỉ xóa khi GAME_START
+ * 
+ * • ELIMINATED;Timeout - không rút trong 10s. Bạn bị trừ 1 điểm!
+ * → Bạn bị loại do timeout, kick khỏi phòng
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 📨 PROTOCOL MESSAGES NHẬN VÀO (Client → Server):
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Xử lý bởi ClientHandler.java:
+ * • READY;true hoặc READY;false
+ * → Guest bật/tắt trạng thái sẵn sàng
+ * 
+ * • START_GAME
+ * → Host bắt đầu game (cần đủ người & tất cả ready)
+ * 
+ * • DRAW_CARD
+ * → Người chơi rút bài (phải đúng lượt)
+ * 
+ * • KICK_PLAYER;targetUsername
+ * → Host kick người chơi
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 🎮 LOGIC GAME:
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * 1. Mỗi người rút tối đa 3 lá (turn-based)
+ * 2. Timeout 10 giây/lượt → -1 điểm, kick khỏi phòng
+ * 3. Xếp hạng bài: ThreeOfAKind > StraightFlush > Straight > Flush > HighCard
+ * 4. Điểm người thắng = (tổng số người bao gồm timeout - 1)
+ * 5. Người timeout đã bị -1 ngay, không trừ thêm ở cuối
+ * 6. Kết quả xếp theo bài mạnh nhất (không theo điểm tích lũy)
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 🎨 CHÚ Ý CHO GIAO DIỆN:
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * ⚠️ ĐÂY LÀ BẢN DEMO LOGIC - CẦN CẢI THIỆN GIAO DIỆN!
+ * 
+ * Logic game đã hoàn chỉnh, chỉ cần wrap UI đẹp hơn:
+ * - Animation rút bài
+ * - Effect lật bài
+ * - Timer đếm ngược đẹp hơn
+ * - Highlight người thắng với effect
+ * - Sound effects (rút bài, win, lose, timeout)
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 public class RoomThread extends Thread {
     private static final int MAX_PLAYERS = 6; // Giới hạn tối đa 6 người
     private String roomName;
     private List<ClientHandler> players = Collections.synchronizedList(new ArrayList<>());
     private Map<String, RoomThread> rooms;
+    private Database db;
+    private Integer matchId; // ID ván đấu trong DB
 
     // Turn-based system
     private int currentTurn = 0; // Index của người chơi hiện tại
@@ -14,15 +131,18 @@ public class RoomThread extends Thread {
     // private Map<Integer, Integer> playerDrawnCount = new HashMap<>(); // legacy
     private Timer turnTimer;
     private boolean gameStarted = false;
+    private List<String> timeoutPlayers = new ArrayList<>(); // Danh sách người bị timeout trong ván này
 
     // New round-based state
     private Deck deck; // Bộ bài mới
     private Map<String, Hand> playerHands = new HashMap<>(); // Bài của từng người
     private Map<String, Integer> drawCounts = new HashMap<>(); // Mỗi người tối đa 3 lần rút
+    private Map<String, Boolean> playerReady = new HashMap<>(); // Trạng thái sẵn sàng của từng người
 
-    public RoomThread(String name, Map<String, RoomThread> rooms) {
+    public RoomThread(String name, Map<String, RoomThread> rooms, Database db) {
         this.roomName = name;
         this.rooms = rooms;
+        this.db = db;
     }
 
     public synchronized boolean isFull() {
@@ -40,18 +160,24 @@ public class RoomThread extends Thread {
         }
         players.add(p);
         p.setStatus("busy");
+        playerReady.put(p.username, false); // Mặc định chưa sẵn sàng
         broadcastRoomUpdate();
+        broadcastReadyStatus(); // Broadcast ngay để client biết trạng thái ready
     }
 
     public synchronized void removePlayer(ClientHandler p) {
         int removedIndex = players.indexOf(p);
         players.remove(p);
         p.setStatus("free");
+        playerReady.remove(p.username);
 
         // Nếu người bị remove là host, chọn host mới
         if (removedIndex == hostIndex && !players.isEmpty()) {
             hostIndex = 0; // Host mới là người đầu tiên
             players.get(0).sendMessage("YOU_ARE_HOST");
+        } else if (removedIndex < hostIndex) {
+            // Nếu xóa người trước host, giảm hostIndex để giữ đúng vị trí
+            hostIndex--;
         }
 
         // Cập nhật currentTurn nếu cần
@@ -65,6 +191,7 @@ public class RoomThread extends Thread {
         // LUÔN broadcast ROOM_UPDATE khi có người rời phòng
         if (!players.isEmpty()) {
             broadcastRoomUpdate();
+            broadcastReadyStatus(); // Cập nhật trạng thái ready sau khi người rời
         }
 
         if (players.isEmpty()) {
@@ -89,31 +216,74 @@ public class RoomThread extends Thread {
         System.out.println("🧩 Phòng " + roomName + " đã sẵn sàng.");
     }
 
+    public synchronized void setPlayerReady(String username, boolean ready) {
+        playerReady.put(username, ready);
+        System.out.println("🔴 [" + roomName + "] " + username + " ready=" + ready);
+        System.out.println("   Ready map: " + playerReady);
+        System.out.println("   All ready? " + allPlayersReady());
+        broadcastReadyStatus();
+    }
+
+    public synchronized boolean allPlayersReady() {
+        if (players.size() < 2)
+            return false; // Cần ít nhất 2 người
+        // Host luôn sẵn sàng, chỉ check các người khác
+        for (ClientHandler p : players) {
+            int idx = players.indexOf(p);
+            if (idx != hostIndex) { // Bỏ qua host
+                if (!playerReady.getOrDefault(p.username, false)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private synchronized void broadcastReadyStatus() {
+        // Format: READY_STATUS|user1:true|user2:false|...
+        StringBuilder sb = new StringBuilder("READY_STATUS|");
+        for (ClientHandler p : players) {
+            boolean ready = playerReady.getOrDefault(p.username, false);
+            sb.append(p.username).append(":").append(ready).append("|");
+        }
+        String msg = sb.toString();
+        System.out.println("📡 Broadcasting: " + msg);
+        broadcast(msg);
+    }
+
     public void startGame() {
         if (players.size() < 2) {
             broadcast("SYSTEM Chưa đủ người chơi để bắt đầu!");
             return;
         }
+        if (!allPlayersReady()) {
+            broadcast("SYSTEM Chưa đủ người sẵn sàng!");
+            return;
+        }
         gameStarted = true;
+        timeoutPlayers.clear(); // Reset danh sách timeout
         deck = new Deck();
         deck.shuffle();
         // Không chia lá ban đầu: mọi người bắt đầu với 0 lá
         playerHands.clear();
         drawCounts.clear();
+        playerReady.clear(); // Reset ready sau khi bắt đầu
         synchronized (players) {
             for (ClientHandler c : players) {
                 c.setStatus("playing");
                 drawCounts.put(c.username, 0);
             }
         }
-        // Thông báo bắt đầu ván; UI sẽ reset từ READY
-        broadcast("READY;" + roomName);
+        // Thông báo bắt đầu ván; UI sẽ reset từ GAME_START
+        broadcast("GAME_START;" + roomName);
         broadcast("SYSTEM Ván bài bắt đầu! Rút theo lượt, mỗi người tối đa 3 lá.");
         currentTurn = hostIndex; // Chủ phòng đi trước
         broadcastRoomUpdate();
         notifyCurrentTurn();
         startTurnTimer();
-        System.out.println("🎮 " + roomName + " bắt đầu, không chia bài ban đầu.");
+        // Tạo mới bản ghi Matches
+        matchId = db != null ? db.createMatch(players.size()) : null;
+        System.out.println("🎮 " + roomName + " bắt đầu, MatchID=" + matchId + ", không chia bài ban đầu.");
     }
 
     // legacy shuffle removed; using Deck instead
@@ -226,13 +396,30 @@ public class RoomThread extends Thread {
         if (!gameStarted || players.isEmpty())
             return;
         ClientHandler timedOut = players.get(currentTurn);
-        System.out.println("⏰ Timeout! Loại: " + timedOut.username);
+        String username = timedOut.username;
+        System.out.println("⏰ Timeout! Loại: " + username);
+
+        // Trừ điểm cho người timeout
+        Server.playerScores.putIfAbsent(username, 0);
+        Server.playerScores.put(username, Server.playerScores.get(username) - 1);
+
+        // Cập nhật vào database
+        if (db != null) {
+            Integer pid = db.getPlayerId(username);
+            if (pid != null) {
+                db.updateTotalPoints(pid, -1);
+            }
+        }
+
+        // Lưu vào danh sách timeout
+        timeoutPlayers.add(username);
+
         // Thông báo bị loại
-        timedOut.sendMessage("ELIMINATED;Timeout - không rút trong 10s");
+        timedOut.sendMessage("ELIMINATED;Timeout - không rút trong 10s. Bạn bị trừ 1 điểm!");
         // Loại khỏi phòng
         players.remove(currentTurn);
-        playerHands.remove(timedOut.username);
-        drawCounts.remove(timedOut.username);
+        playerHands.remove(username);
+        drawCounts.remove(username);
         timedOut.setStatus("free");
         timedOut.resetCurrentRoom();
         // Cập nhật host nếu cần
@@ -299,12 +486,56 @@ public class RoomThread extends Thread {
             turnTimer.cancel();
             turnTimer = null;
         }
-        // Tính điểm
+
+        // Trường hợp đặc biệt: Chỉ còn 1 người (những người khác timeout)
+        if (players.size() == 1 && timeoutPlayers.size() > 0) {
+            ClientHandler lastPlayer = players.get(0);
+            String winner = lastPlayer.username;
+            int totalParticipants = 1 + timeoutPlayers.size();
+            int winnerPoints = totalParticipants - 1;
+
+            // Cập nhật điểm thắng
+            Server.playerScores.putIfAbsent(winner, 0);
+            Server.playerScores.put(winner, Server.playerScores.get(winner) + winnerPoints);
+
+            // Persist to DB
+            if (db != null) {
+                Integer winId = db.getPlayerId(winner);
+                if (winId != null) {
+                    db.updateTotalPoints(winId, winnerPoints);
+                }
+            }
+
+            // Broadcast thông báo
+            broadcast("WINNER " + winner + " - Chiến thắng do đối thủ timeout!");
+            broadcast("RANKING|" + winner + ":" + Server.playerScores.get(winner) + ":+" + winnerPoints + "|");
+            broadcast("END;" + roomName);
+
+            // Reset trạng thái
+            synchronized (players) {
+                lastPlayer.setStatus("busy");
+                playerReady.put(winner, false);
+            }
+            playerHands.clear();
+            drawCounts.clear();
+            broadcastReadyStatus();
+            Server.broadcastPlayerList();
+
+            System.out.println("🏁 " + winner + " thắng do đối thủ timeout, nhận +" + winnerPoints + " điểm.");
+            return;
+        }
+
+        // Thu thập tay bài & điểm modulo (chỉ HighCard)
         Map<String, HandRank> ranks = new HashMap<>();
+        Map<String, Integer> modScores = new HashMap<>();
         for (ClientHandler p : players) {
             Hand h = playerHands.get(p.username);
             if (h != null) {
-                ranks.put(p.username, h.getRank());
+                HandRank hr = h.getRank();
+                ranks.put(p.username, hr);
+                if (hr.getCategory() == 1) { // HighCard
+                    modScores.put(p.username, computeModScore(h));
+                }
             }
         }
         // Broadcast toàn bộ bài của tất cả người chơi
@@ -321,68 +552,216 @@ public class RoomThread extends Thread {
         }
         broadcast(showAll.toString());
 
-        // Công bố người thắng (trong những người còn lại)
+        // Xác định người thắng: ưu tiên category trước, nếu HighCard thì so modulo rồi
+        // tie-break bằng HandRank
         String winner = null;
-        HandRank best = null;
-        for (Map.Entry<String, HandRank> e : ranks.entrySet()) {
-            if (winner == null || e.getValue().compareTo(best) > 0) {
-                winner = e.getKey();
-                best = e.getValue();
+        HandRank winnerRank = null;
+        int winnerModScore = -1; // Chỉ dùng khi HighCard
+        for (String user : ranks.keySet()) {
+            HandRank hr = ranks.get(user);
+            int ms = hr.getCategory() == 1 ? modScores.getOrDefault(user, -1) : -1;
+            if (winner == null) {
+                winner = user;
+                winnerRank = hr;
+                winnerModScore = ms;
+                continue;
+            }
+            if (hr.getCategory() > winnerRank.getCategory()) {
+                winner = user;
+                winnerRank = hr;
+                winnerModScore = ms;
+            } else if (hr.getCategory() == winnerRank.getCategory()) {
+                if (hr.getCategory() == 1) { // HighCard
+                    if (ms > winnerModScore || (ms == winnerModScore && hr.compareTo(winnerRank) > 0)) {
+                        winner = user;
+                        winnerRank = hr;
+                        winnerModScore = ms;
+                    }
+                } else { // Special hand tie-break
+                    if (hr.compareTo(winnerRank) > 0) {
+                        winner = user;
+                        winnerRank = hr;
+                        winnerModScore = ms;
+                    }
+                }
             }
         }
 
         // Cập nhật điểm số
         int numPlayers = ranks.size();
-        if (winner != null && numPlayers > 1) {
-            int winnerPoints = numPlayers - 1; // Người thắng +n-1
+        // Số người thực sự tham gia (kể cả người timeout)
+        int totalParticipants = numPlayers + timeoutPlayers.size();
+
+        if (winner != null && totalParticipants > 1) {
+            // Người thắng nhận điểm = (tổng số người tham gia - 1)
+            // Kể cả người đã bị timeout
+            int winnerPoints = totalParticipants - 1;
 
             // Khởi tạo điểm cho người chưa có
             for (String user : ranks.keySet()) {
                 Server.playerScores.putIfAbsent(user, 0);
             }
 
-            // Cập nhật điểm
+            // Cập nhật điểm thắng
             Server.playerScores.put(winner, Server.playerScores.get(winner) + winnerPoints);
+
+            // Người thua (chưa bị timeout) bị trừ 1
             for (String user : ranks.keySet()) {
                 if (!user.equals(winner)) {
                     Server.playerScores.put(user, Server.playerScores.get(user) - 1);
                 }
             }
+
+            // Persist point changes to DB
+            if (db != null) {
+                Integer winId = db.getPlayerId(winner);
+                if (winId != null)
+                    db.updateTotalPoints(winId, winnerPoints);
+                for (String user : ranks.keySet()) {
+                    if (!user.equals(winner)) {
+                        Integer pid = db.getPlayerId(user);
+                        if (pid != null)
+                            db.updateTotalPoints(pid, -1);
+                    }
+                }
+                // Người timeout đã bị trừ điểm từ trước, không cần trừ nữa
+            }
         }
 
-        if (winner != null)
-            broadcast("WINNER " + winner + " với bài " + best);
-
-        // Gửi bảng xếp hạng (chỉ trong phòng này)
-        StringBuilder ranking = new StringBuilder("RANKING|");
-        List<Map.Entry<String, Integer>> sortedScores = new ArrayList<>();
+        // Gửi thông tin chi tiết về tay bài và điểm thay đổi
+        // Format: HAND_RANKS|user1:category:categoryName:score|user2:...
+        StringBuilder handRanksMsg = new StringBuilder("HAND_RANKS|");
         for (String user : ranks.keySet()) {
-            sortedScores.add(new AbstractMap.SimpleEntry<>(user, Server.playerScores.getOrDefault(user, 0)));
+            HandRank hr = ranks.get(user);
+            int displayScore = (hr.getCategory() == 1) ? modScores.getOrDefault(user, 0) : hr.toCompositeScore();
+            String categoryName = hr.getCategoryName();
+            handRanksMsg.append(user).append(":").append(hr.getCategory())
+                    .append(":").append(categoryName).append(":").append(displayScore).append("|");
         }
-        sortedScores.sort((a, b) -> b.getValue().compareTo(a.getValue())); // Sắp xếp giảm dần
+        broadcast(handRanksMsg.toString());
 
-        for (int i = 0; i < sortedScores.size(); i++) {
-            Map.Entry<String, Integer> entry = sortedScores.get(i);
-            ranking.append((i + 1)).append(". ").append(entry.getKey())
-                    .append(": ").append(entry.getValue()).append(" điểm|");
+        if (winner != null) {
+            if (winnerRank.getCategory() == 1) {
+                broadcast("WINNER " + winner + " tay=HighCard điểm=" + winnerModScore);
+            } else {
+                broadcast("WINNER " + winner + " tay=" + winnerRank.getCategoryName());
+            }
+        }
+
+        // Gửi bảng xếp hạng theo thứ tự tay bài (người thắng trên cùng)
+        // Format: RANKING|user1:totalPoints:changePoints|user2:...
+        StringBuilder ranking = new StringBuilder("RANKING|");
+
+        // Sắp xếp theo thứ hạng tay bài trong ván này (winner đầu tiên)
+        List<String> sortedPlayers = new ArrayList<>(ranks.keySet());
+        sortedPlayers.sort((u1, u2) -> {
+            HandRank hr1 = ranks.get(u1);
+            HandRank hr2 = ranks.get(u2);
+
+            // So sánh category trước
+            if (hr1.getCategory() != hr2.getCategory()) {
+                return hr2.getCategory() - hr1.getCategory(); // Category cao hơn lên trước
+            }
+
+            // Cùng category
+            if (hr1.getCategory() == 1) { // HighCard - so modulo
+                int mod1 = modScores.getOrDefault(u1, 0);
+                int mod2 = modScores.getOrDefault(u2, 0);
+                if (mod1 != mod2) {
+                    return mod2 - mod1; // Modulo cao hơn lên trước
+                }
+                return hr2.compareTo(hr1); // Tie-break
+            } else { // Special hand
+                return hr2.compareTo(hr1); // compareTo cao hơn lên trước
+            }
+        });
+
+        for (int i = 0; i < sortedPlayers.size(); i++) {
+            String user = sortedPlayers.get(i);
+            int totalPts = Server.playerScores.getOrDefault(user, 0);
+            int change = user.equals(winner) ? (totalParticipants - 1) : -1;
+            ranking.append(user).append(":").append(totalPts).append(":").append(change).append("|");
         }
         broadcast(ranking.toString());
 
-        broadcast("END;" + roomName);
-        synchronized (players) {
-            for (ClientHandler c : players)
-                c.setStatus("busy");
+        // Lưu MatchResults vào DB (sắp xếp theo thứ hạng tay bài)
+        if (db != null && matchId != null) {
+            for (int i = 0; i < sortedPlayers.size(); i++) {
+                String user = sortedPlayers.get(i);
+                Hand h = playerHands.get(user);
+                HandRank r = ranks.get(user);
+                Integer pid = db.getPlayerId(user);
+                if (pid != null && h != null && r != null) {
+                    int scoreVal = (r.getCategory() == 1) ? modScores.getOrDefault(user, 0) : r.toCompositeScore();
+                    db.insertMatchResult(matchId, pid, i + 1, scoreVal, r.getCategoryName(), h.toShortString());
+                }
+            }
+            Integer winPid = winner != null ? db.getPlayerId(winner) : null;
+            db.endMatch(matchId, winPid);
         }
-        System.out.println("🏁 Vòng rút bài kết thúc trong " + roomName);
+
+        broadcast("END;" + roomName);
+        // Keep players in room with busy status so they can ready again
+        synchronized (players) {
+            for (ClientHandler c : players) {
+                c.setStatus("busy");
+                playerReady.put(c.username, false); // Reset ready cho ván mới
+            }
+        }
+        // Reset draw state for next round
+        playerHands.clear();
+        drawCounts.clear();
+        broadcastReadyStatus(); // Thông báo trạng thái ready mới
+
+        // Broadcast danh sách người chơi để cập nhật điểm mới cho lobby
+        Server.broadcastPlayerList();
+
+        System.out.println("🏁 Vòng rút bài kết thúc trong " + roomName + ", sẵn sàng cho ván mới.");
     }
 
-    // Kick người chơi (chỉ host mới được kick)
+    // Tính tổng điểm 3 lá % 10: A=1; J=11; Q=12; K=13; còn lại số tự nhiên
+    private int computeModScore(Hand h) {
+        int sum = 0;
+        for (Card c : h.getCards()) {
+            String r = c.getRank();
+            int val;
+            switch (r) {
+                case "A":
+                    val = 1;
+                    break;
+                case "J":
+                    val = 11;
+                    break;
+                case "Q":
+                    val = 12;
+                    break;
+                case "K":
+                    val = 13;
+                    break;
+                default:
+                    try {
+                        val = Integer.parseInt(r);
+                    } catch (NumberFormatException ex) {
+                        val = 0;
+                    }
+            }
+            sum += val;
+        }
+        return sum % 10; // 0..9
+    }
+
+    // Kick người chơi (chỉ host mới được kick, và chỉ khi chưa chơi)
     public void kickPlayer(String targetUsername, ClientHandler requester) {
         // Tìm target player trong synchronized block
         ClientHandler targetPlayer = null;
         boolean isHost = false;
 
         synchronized (this) {
+            // Không cho kick khi game đang chạy
+            if (gameStarted) {
+                requester.sendMessage("KICK_BLOCKED;Không thể kick khi đang chơi");
+                return;
+            }
             int requesterIndex = players.indexOf(requester);
             if (requesterIndex != hostIndex) {
                 requester.sendMessage("NOT_HOST");

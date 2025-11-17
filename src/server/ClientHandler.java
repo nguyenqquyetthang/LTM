@@ -4,6 +4,91 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CLIENT HANDLER - XỬ LÝ KẾT NỐI & MESSAGES CỦA MỖI CLIENT
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Mỗi client kết nối có 1 ClientHandler riêng xử lý:
+ * - Đăng nhập/đăng ký
+ * - Chuyển tiếp messages đến đúng phòng
+ * - Gửi thông tin player/room list
+ * - Quản lý lịch sử trận đấu
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 📨 PROTOCOL MESSAGES NHẬN VÀO (Client → Server):
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * GỬI: "LOGIN;username;password"
+ * TRẢ VỀ: "LOGIN_OK" hoặc "LOGIN_FAIL"
+ * LOGIC: Tự động tạo tài khoản mới nếu username chưa tồn tại
+ * ⚠️ Password lưu plain text (CHƯA MÃ HÓA - cần cải thiện bảo mật)
+ * 
+ * GỬI: "GET_PLAYER_LIST"
+ * TRẢ VỀ: "PLAYER_LIST|user1:status1:pts1|user2:status2:pts2|..."
+ * 
+ * GỬI: "GET_ROOMS"
+ * TRẢ VỀ: "ROOMS_LIST|room1:count1/6|room2:count2/6|..."
+ * 
+ * GỬI: "CREATE"
+ * TRẢ VỀ: "ROOM_CREATED;RoomName" → sau đó "ROOM_UPDATE|..."
+ * LOGIC: Tên phòng = "Room_" + username, người tạo là host
+ * 
+ * GỬI: "JOIN;RoomName"
+ * TRẢ VỀ: "JOIN_OK;RoomName" hoặc "JOIN_FAIL" hoặc "ROOM_FULL"
+ * LOGIC: Max 6 người/phòng
+ * 
+ * GỬI: "READY;true" hoặc "READY;false"
+ * CHUYỂN ĐẾN: RoomThread (chỉ guest gửi, host không cần)
+ * 
+ * GỬI: "START_GAME"
+ * CHUYỂN ĐẾN: RoomThread (chỉ host gửi, cần đủ người & tất cả ready)
+ * 
+ * GỬI: "DRAW_CARD"
+ * CHUYỂN ĐẾN: RoomThread (phải đúng lượt)
+ * 
+ * GỬI: "KICK_PLAYER;targetUsername"
+ * CHUYỂN ĐẾN: RoomThread (chỉ host gửi)
+ * TRẢ VỀ: "NOT_HOST" nếu không phải host
+ * "KICK_BLOCKED;..." nếu không thể kick (game đang chạy)
+ * 
+ * GỬI: "GET_HISTORY"
+ * TRẢ VỀ: "HISTORY_DATA|matchId|startTime|endTime|numPlayers|winner\n..."
+ * PARSE: LobbyScreen.java dòng 240-274
+ * 
+ * GỬI: "GET_MATCH_DETAIL;matchId"
+ * TRẢ VỀ: "MATCH_DETAIL_DATA|MATCH|...|RESULT|...|RESULT|..."
+ * PARSE: LobbyScreen.java dòng 293-320
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 📡 PROTOCOL MESSAGES GỬI ĐI (Server → Client):
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Xem chi tiết ở Server.java và RoomThread.java
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 🔄 FLOW XỬ LÝ:
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * 1. Client kết nối → ClientHandler.run() bắt đầu
+ * 2. Đợi LOGIN message → authenticate hoặc tạo tài khoản mới
+ * 3. Loop lắng nghe messages:
+ * - Request info (GET_*) → gửi trả về data
+ * - Room actions (CREATE, JOIN) → tương tác với RoomThread
+ * - Game actions (READY, START, DRAW, KICK) → chuyển đến RoomThread
+ * 4. Client ngắt kết nối → cleanup (rời phòng, xóa khỏi activeClients)
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 🎨 CHÚ Ý CHO GIAO DIỆN:
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * ⚠️ ĐÂY LÀ BẢN DEMO LOGIC - CẦN CẢI THIỆN GIAO DIỆN!
+ * 
+ * File này xử lý backend, không cần sửa.
+ * Chỉ cần tập trung vào UI ở các Screen (Login, Lobby, Game).
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 public class ClientHandler extends Thread {
     private Socket socket;// Socket nhan tu player
     private DataInputStream in; // Input
@@ -12,16 +97,18 @@ public class ClientHandler extends Thread {
     private String status = "free"; // free | busy | playing
     private String currentRoom;
 
-    private Map<String, String> accounts; // Danh sach accout
+    private Map<String, String> accounts; // Danh sach accout (cache từ DB)
     private Map<String, RoomThread> rooms;// danh sach phong
     private List<ClientHandler> activeClients;
+    private Database db;
 
     public ClientHandler(Socket socket, Map<String, String> accounts, Map<String, RoomThread> rooms,
-            List<ClientHandler> activeClients) {
+            List<ClientHandler> activeClients, Database db) {
         this.socket = socket;
         this.accounts = accounts;
         this.rooms = rooms;
         this.activeClients = activeClients;
+        this.db = db;
     }
 
     private void addActiveClient() {
@@ -36,8 +123,8 @@ public class ClientHandler extends Thread {
             activeClients.remove(this);
         }
     }
-
-    @Override
+    // 
+    @Override // 
     public void run() {
         try {
             in = new DataInputStream(socket.getInputStream());
@@ -49,18 +136,27 @@ public class ClientHandler extends Thread {
                 String[] parts = loginMsg.split(";");
                 String user = parts[1];
                 String pass = parts[2];
-                if (accounts.containsKey(user) && accounts.get(user).equals(pass)) {
+                boolean ok = db.authenticate(user, pass);
+                if (!ok) {
+                    // Kiểm tra user có tồn tại chưa
+                    Integer existingId = db.getPlayerId(user);
+                    if (existingId == null) { // Chưa tồn tại -> tạo mới
+                        Integer newId = db.createPlayer(user, pass);
+                        if (newId != null) {
+                            accounts.put(user, pass); // cập nhật cache
+                            ok = true;
+                        }
+                    } // Nếu đã tồn tại nhưng sai mật khẩu -> vẫn thất bại như cũ
+                }
+                if (ok) {
                     out.writeUTF("LOGIN_OK");
                     username = user;
-                    Server.playerScores.putIfAbsent(user, 0);
+                    Integer pts = db.getTotalPoints(user);
+                    Server.playerScores.putIfAbsent(user, pts == null ? 0 : pts);
                     addActiveClient();
                     System.out.println("✅ " + user + " đăng nhập thành công.");
-
-                    // Gửi danh sách hiện tại cho client mới login ngay lập tức
-                    sendPlayerListToClient();
-
-                    // Broadcast cho TẤT CẢ clients khác (để họ biết có người mới)
-                    Server.broadcastPlayerList();
+                    sendPlayerListToClient(); // snapshot
+                    Server.broadcastPlayerList(); // thông báo mọi người
                 } else {
                     out.writeUTF("LOGIN_FAIL");
                     socket.close();
@@ -86,7 +182,34 @@ public class ClientHandler extends Thread {
                     continue;
                 }
 
+                // Request lịch sử trận đấu
+                if (msg.equalsIgnoreCase("GET_HISTORY")) {
+                    String history = db.getMatchHistory(20); // lấy 20 trận gần nhất
+                    sendMessage("HISTORY_DATA|" + history);
+                    continue;
+                }
 
+                // Request lịch sử chi tiết (tay bài + xếp hạng)
+                if (msg.equalsIgnoreCase("GET_HISTORY_DETAIL")) {
+                    String historyDetail = db.getDetailedMatchHistory(10); // lấy 10 trận gần nhất (chi tiết)
+                    sendMessage("HISTORY_DETAIL_DATA|" + historyDetail);
+                    continue;
+                }
+
+                // Request chi tiết 1 match: GET_MATCH_DETAIL;MatchID
+                if (msg.startsWith("GET_MATCH_DETAIL;")) {
+                    String[] parts = msg.split(";");
+                    if (parts.length >= 2) {
+                        try {
+                            int mid = Integer.parseInt(parts[1]);
+                            String detail = db.getMatchDetail(mid);
+                            sendMessage("MATCH_DETAIL_DATA|" + detail);
+                        } catch (NumberFormatException ex) {
+                            sendMessage("MATCH_DETAIL_DATA|ERROR Invalid MatchID");
+                        }
+                    }
+                    continue;
+                }
 
                 // Tạo phòng
                 if (msg.equalsIgnoreCase("CREATE")) {
@@ -98,6 +221,15 @@ public class ClientHandler extends Thread {
                 if (msg.startsWith("JOIN;")) {
                     String roomName = msg.split(";")[1];
                     handleJoinRoom(roomName);
+                    continue;
+                }
+
+                // Người chơi sẵn sàng
+                if (msg.startsWith("READY;")) {
+                    String roomName = msg.split(";")[1];
+                    if (currentRoom != null && currentRoom.equals(roomName) && rooms.containsKey(currentRoom)) {
+                        rooms.get(currentRoom).setPlayerReady(username, true);
+                    }
                     continue;
                 }
 
@@ -201,7 +333,7 @@ public class ClientHandler extends Thread {
                 roomNumber++;
             } while (rooms.containsKey(roomName));
 
-            newRoom = new RoomThread(roomName, rooms);
+            newRoom = new RoomThread(roomName, rooms, db);
             rooms.put(roomName, newRoom);
         }
 
@@ -243,7 +375,7 @@ public class ClientHandler extends Thread {
         // Tìm người chơi được mời (synchronized để tránh
         // ConcurrentModificationException)
         ClientHandler targetClient = null;
-        synchronized (activeClients) {
+        synchronized (activeClients) { // 
             for (ClientHandler client : activeClients) {
                 if (client.username != null && client.username.equals(targetUsername)) {
                     targetClient = client;
@@ -281,7 +413,9 @@ public class ClientHandler extends Thread {
             StringBuilder sb = new StringBuilder("PLAYER_LIST|");
             for (ClientHandler client : activeClients) {
                 if (client.username != null) {
-                    sb.append(client.username).append(":").append(client.getStatus()).append("|");
+                    int pts = Server.playerScores.getOrDefault(client.username, 0);
+                    sb.append(client.username).append(":").append(client.getStatus())
+                            .append(":").append(pts).append("|");
                 }
             }
             sendMessage(sb.toString());

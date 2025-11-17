@@ -31,8 +31,24 @@ public class LoginScreen extends JFrame {
 
     private void loginAction() {
         try {
-            // Đảm bảo IP và Port này khớp với Server.java
-            NetworkHandler network = new NetworkHandler("10.21.246.235", 5000);
+            // ═══════════════════════════════════════════════════════════════════
+            // ⚠️ CẤU HÌNH QUAN TRỌNG - THAY ĐỔI IP & PORT TẠI ĐÂY
+            // ═══════════════════════════════════════════════════════════════════
+            //
+            // 1. CHẠY LOCAL (server cùng máy):
+            // NetworkHandler network = new NetworkHandler("localhost", 5000);
+            //
+            // 2. CHẠY LAN (server máy khác, cùng mạng):
+            // NetworkHandler network = new NetworkHandler("192.168.1.4", 5000);
+            // ^^^^^^^^^^^^^ IP từ console server
+            //
+            // 3. Port PHẢI KHỚP với Server.java (dòng 23)
+            //
+            // ❓ TÌM IP SERVER: Chạy Server.java, xem console có dòng "📡 IP: ..."
+            //
+            // ═══════════════════════════════════════════════════════════════════
+
+            NetworkHandler network = new NetworkHandler("10.21.49.172", 5000);
             String username = txtUsername.getText();
             String password = new String(txtPassword.getPassword());
 

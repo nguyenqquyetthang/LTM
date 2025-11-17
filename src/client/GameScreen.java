@@ -11,6 +11,138 @@ import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * GAME SCREEN - MÀN HÌNH PHÒNG CHƠI & GAME
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Màn hình chính để chơi game, bao gồm:
+ * - Hiển thị 6 vị trí ngồi (layout oval)
+ * - Rút bài theo lượt (turn-based, 10s timeout)
+ * - Hiển thị bài của mỗi người khi lật
+ * - Xếp hạng và kết quả cuối game
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 📨 MESSAGES NHẬN TỪ SERVER (parse trong handleGameMessage):
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * • GAME_START;RoomName
+ * → Reset toàn bộ: bài, điểm rút, label, cache
+ * → Parse: dòng 222-253
+ * 
+ * • YOUR_TURN
+ * → Enable nút rút bài, bắt đầu đếm ngược 10s
+ * → Parse: dòng 268-276
+ * 
+ * • WAIT
+ * → Disable nút rút, dừng đếm ngược
+ * → Parse: dòng 277-284
+ * 
+ * • DRAW;K♠
+ * → Hiển thị lá bài vừa rút
+ * → Parse: dòng 285-288
+ * 
+ * • SHOW_HANDS_ALL|user1=K♠,Q♠,J♠|user2=A♥,5♦,3♣|...
+ * → Lật TẤT CẢ bài của mọi người lên màn hình
+ * → Lưu vào cachedPlayerCards
+ * → Parse: dòng 293-339
+ * 
+ * • HAND_RANKS|user1:4:Straight Flush:530|user2:1:HighCard:7|...
+ * → Hiển thị loại tay bài trên label tên
+ * → Chỉ show score cho HighCard (category=1)
+ * → Lưu vào cachedHandRanks
+ * → Parse: dòng 472-500
+ * 
+ * • WINNER player1 tay=Straight Flush
+ * → Hiển thị popup người thắng
+ * → Highlight panel người thắng (border vàng)
+ * → Parse: dòng 278-292
+ * 
+ * • RANKING|user1:15:+3|user2:8:-1|...
+ * → Hiển thị bảng xếp hạng đầy đủ với bài và loại tay
+ * → Parse: dòng 518-545
+ * 
+ * • END;RoomName
+ * → Ván kết thúc, KHÔNG reset bài (để xem)
+ * → Reset ready cho ván mới
+ * → Parse: dòng 546-564
+ * 
+ * • ROOM_UPDATE|roomName|hostIndex|player1,player2,player3,...
+ * → Cập nhật vị trí ngồi của mọi người
+ * → Parse: dòng 382-390
+ * 
+ * • READY_STATUS|user1:true|user2:false|...
+ * → Hiển thị icon ✅/❌ trên tên
+ * → Host check để enable nút Start
+ * → Parse: dòng 406-444
+ * 
+ * • YOU_ARE_HOST
+ * → Trở thành host mới (khi host cũ rời)
+ * → Hiển thị nút Start, ẩn nút Ready
+ * → Parse: dòng 369-380
+ * 
+ * • ELIMINATED;reason
+ * → Bị timeout/kick, quay về lobby
+ * → Parse: dòng 347-355
+ * 
+ * • KICKED;reason
+ * → Bị host kick, quay về lobby
+ * → Parse: dòng 356-368
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 📤 MESSAGES GỬI ĐẾN SERVER:
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * • "GET_PLAYER_LIST" → Request danh sách người online
+ * • "GET_ROOM_UPDATE;roomName" → Request cập nhật phòng
+ * • "START;roomName" → Host bắt đầu game
+ * • "READY;roomName" → Guest sẵn sàng
+ * • "DRAW;roomName" → Rút 1 lá bài
+ * • "INVITE;targetUsername" → Mời người vào phòng
+ * • "KICK_PLAYER;targetUsername" → Host kick người
+ * • "LEAVE_ROOM;roomName" → Thoát phòng
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 🎨 BIẾN STATE QUAN TRỌNG:
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * • canDraw: Có thể rút bài không (YOUR_TURN)
+ * • cardsDrawn: Số lá đã rút (max 3)
+ * • myPosition: Vị trí của mình trong 6 panel (0-5)
+ * • isHost: Có phải chủ phòng không
+ * • playersReadyStatus: Map<username, ready> - trạng thái sẵn sàng
+ * • cachedHandRanks: Map<username, "tay bài"> - cache cho RANKING
+ * • cachedPlayerCards: Map<username, "bài"> - cache cho RANKING
+ * • cardIconCache: Cache ảnh bài để không load lại
+ * • countdownTimer: Timer đếm ngược 10s cho lượt
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 🎨 CHÚ Ý CHO GIAO DIỆN:
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * ⚠️ ĐÂY LÀ BẢN DEMO LOGIC - CẦN CẢI THIỆN GIAO DIỆN!
+ * 
+ * Điểm cần cải thiện:
+ * 1. Layout 6 vị trí: Hiện tại dùng absolute positioning
+ * → Cải thiện: Dùng layout oval động theo kích thước cửa sổ
+ * 
+ * 2. Hiển thị bài: Hiện tại chỉ load ảnh cơ bản
+ * → Cải thiện: Animation lật bài, hiệu ứng rút bài
+ * 
+ * 3. Timer: Chỉ hiển thị số giây còn lại
+ * → Cải thiện: Progress bar, màu đổi khi gần hết giờ
+ * 
+ * 4. Người thắng: Chỉ đổi border
+ * → Cải thiện: Animation sparkle, confetti effect
+ * 
+ * 5. Kết quả: Hiển thị bằng JOptionPane đơn giản
+ * → Cải thiện: Custom dialog đẹp hơn với animation
+ * 
+ * 6. Sound: Không có
+ * → Cải thiện: Thêm âm thanh rút bài, win, lose, timeout
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 public class GameScreen extends JFrame {
     private String username;
     private NetworkHandler network;
@@ -22,6 +154,7 @@ public class GameScreen extends JFrame {
     private JLabel[] playerNameLabels = new JLabel[6];
     private JLabel[][] cardLabels = new JLabel[6][3]; // Chỉ 3 ô rút bài
     private JButton btnStart;
+    private JButton btnReady;
     private JButton btnDraw;
     private JLabel lblTurnInfo;
     private JLabel lblTimer;
@@ -36,12 +169,34 @@ public class GameScreen extends JFrame {
     private Timer countdownTimer;
     private int timeLeft = 10;
     private int myPosition = -1; // Vị trí của mình trong phòng
+    private Map<String, Boolean> playersReadyStatus = new HashMap<>(); // Trạng thái sẵn sàng
+    // Cache thông tin cho kết quả ván đấu
+    private Map<String, String> cachedHandRanks = new HashMap<>(); // user -> "categoryName (score)"
+    private Map<String, String> cachedPlayerCards = new HashMap<>(); // user -> "card1,card2,card3"
     // Cache ảnh lá bài để tránh load lại nhiều lần
     private final Map<String, ImageIcon> cardIconCache = new HashMap<>();
     private static final int CARD_IMG_W = 50;
     private static final int CARD_IMG_H = 75;
     private static final String CARD_IMG_BASE = "PNG-cards-1.3/PNG-cards-1.3";
 
+    /**
+     * ═══════════════════════════════════════════════════════════════════════════
+     * CONSTRUCTOR - KHỞI TẠO MÀN HÌNH GAME
+     * ═══════════════════════════════════════════════════════════════════════════
+     * 
+     * @param username Tên người chơi
+     * @param network  NetworkHandler đã kết nối
+     * @param isHost   Có phải chủ phòng không (hiển thị nút Start/Kick)
+     * @param roomName Tên phòng
+     * 
+     *                 Flow khởi tạo:
+     *                 1. Tạo UI: 6 panel vị trí ngồi + buttons + timer
+     *                 2. Bắt đầu lắng nghe messages từ server
+     *                 3. Request danh sách người online và trạng thái phòng
+     *                 4. Setup event listeners cho các nút
+     * 
+     *                 ═══════════════════════════════════════════════════════════════════════════
+     */
     public GameScreen(String username, NetworkHandler network, boolean isHost, String roomName) {
         this.username = username;
         this.network = network;
@@ -54,7 +209,9 @@ public class GameScreen extends JFrame {
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
 
-        // ===== Panel trái: Danh sách người chơi online =====
+        // ═════════════════════════════════════════════════════════════════════════
+        // PANEL TRÁI: DANH SÁCH NGƯỜI CHƠI ONLINE (để mời vào phòng)
+        // ═════════════════════════════════════════════════════════════════════════
         JPanel leftPanel = new JPanel(new BorderLayout());
         leftPanel.setPreferredSize(new Dimension(200, 0));
         leftPanel.setBorder(BorderFactory.createTitledBorder("Người chơi Online"));
@@ -69,7 +226,12 @@ public class GameScreen extends JFrame {
         leftPanel.add(scrollPane, BorderLayout.CENTER);
         leftPanel.add(btnInvite, BorderLayout.SOUTH);
 
-        // ===== Panel giữa: Bàn chơi với 6 vị trí =====
+        // ═════════════════════════════════════════════════════════════════════════
+        // PANEL GIỮA: BÀN CHƠI VỚI 6 VỊ TRÍ NGỒI
+        // ═════════════════════════════════════════════════════════════════════════
+        // Layout oval: Top, RightTop, RightBottom, Bottom (mình), LeftBottom, LeftTop
+        // Mỗi vị trí có: Label tên + 3 ô cho 3 lá bài
+        // ═════════════════════════════════════════════════════════════════════════
         JPanel centerPanel = new JPanel(new BorderLayout());
 
         // Top: Timer và thông tin lượt
@@ -87,8 +249,12 @@ public class GameScreen extends JFrame {
         tablePanel.setPreferredSize(new Dimension(900, 550));
         tablePanel.setBackground(new Color(34, 139, 34)); // Màu xanh bàn chơi
 
-        // Tạo 6 vị trí ngồi (top, right-top, right-bottom, bottom, left-bottom,
-        // left-top)
+        // ─────────────────────────────────────────────────────────────────────────
+        // 6 VỊ TRÍ NGỒI - LAYOUT OVAL
+        // ─────────────────────────────────────────────────────────────────────────
+        // Index 3 (Bottom) thường là vị trí của mình (myPosition)
+        // Server gửi danh sách player theo thứ tự, client map vào 6 vị trí này
+        // ─────────────────────────────────────────────────────────────────────────
         int[][] positions = {
                 { 350, 10 }, // 0: Top (đối diện)
                 { 650, 120 }, // 1: Right-top
@@ -128,20 +294,26 @@ public class GameScreen extends JFrame {
         // Bottom: Nút điều khiển
         JPanel bottomPanel = new JPanel();
         btnStart = new JButton("Bắt đầu");
+        btnReady = new JButton("Sẵn sàng");
         btnDraw = new JButton("Rút bài");
         btnKick = new JButton("Kick người chơi");
         JButton btnLeave = new JButton("❌ Thoát phòng");
 
-        btnStart.setEnabled(isHost);
+        btnStart.setEnabled(false); // Vô hiệu hóa cho đến khi mọi người sẵn sàng
+        btnReady.setEnabled(!isHost); // Chỉ khách mới có nút sẵn sàng
         btnDraw.setEnabled(false);
         btnKick.setEnabled(isHost);
         btnLeave.setForeground(Color.RED);
 
+        // Luôn thêm tất cả button, nhưng điều chỉnh visible dựa trên role
+        btnStart.setVisible(isHost);
+        btnReady.setVisible(!isHost);
+        btnKick.setVisible(true); // Luôn có trong UI, nhưng enabled dựa trên isHost
+
         bottomPanel.add(btnStart);
+        bottomPanel.add(btnReady);
         bottomPanel.add(btnDraw);
-        if (isHost) {
-            bottomPanel.add(btnKick);
-        }
+        bottomPanel.add(btnKick);
         bottomPanel.add(btnLeave);
 
         centerPanel.add(topPanel, BorderLayout.NORTH);
@@ -151,19 +323,30 @@ public class GameScreen extends JFrame {
         add(leftPanel, BorderLayout.WEST);
         add(centerPanel, BorderLayout.CENTER);
 
-        // ===== Lắng nghe server =====
+        // ═════════════════════════════════════════════════════════════════════════
+        // LẮNG NGHE SERVER - BẮT ĐẦU NHẬN MESSAGES
+        // ═════════════════════════════════════════════════════════════════════════
         network.startListening(this::handleGameMessage);
 
-        // ===== Request danh sách người online ngay khi vào phòng =====
+        // ═════════════════════════════════════════════════════════════════════════
+        // GỬI NGAY KHI VÀO PHÒNG
+        // ═════════════════════════════════════════════════════════════════════════
+        // 📤 GỬI: "GET_PLAYER_LIST" → nhận "PLAYER_LIST|..." 
+        // 📤 GỬI: "GET_ROOM_UPDATE;roomName" → nhận "ROOM_UPDATE|..."
+        // ═════════════════════════════════════════════════════════════════════════
         try {
             network.sendMsg("GET_PLAYER_LIST");
-            // Yêu cầu trạng thái phòng ngay khi vào để không bị lỡ ROOM_UPDATE trước đó
             network.sendMsg("GET_ROOM_UPDATE;" + roomName);
         } catch (IOException e) {
             System.err.println("⚠️ Không thể request danh sách người chơi");
         }
 
-        // ===== Nút "Bắt đầu" =====
+        // ═════════════════════════════════════════════════════════════════════════
+        // NÚT "BẮT ĐẦU" - CHỈ HOST
+        // ═════════════════════════════════════════════════════════════════════════
+        // 📤 GỬI: "START;roomName"
+        // 📨 NHẬN SAU ĐÓ: "GAME_START;roomName" (broadcast cho tất cả)
+        // ═════════════════════════════════════════════════════════════════════════
         btnStart.addActionListener(e -> {
             try {
                 network.sendMsg("START;" + roomName);
@@ -173,7 +356,31 @@ public class GameScreen extends JFrame {
             }
         });
 
-        // ===== Nút "Rút bài" =====
+        // ═════════════════════════════════════════════════════════════════════════
+        // NÚT "SẴN SÀNG" - CHỈ GUEST
+        // ═════════════════════════════════════════════════════════════════════════
+        // 📤 GỬI: "READY;roomName"
+        // 📨 NHẬN SAU ĐÓ: "READY_STATUS|user1:true|user2:false|..." (broadcast)
+        // ═════════════════════════════════════════════════════════════════════════
+        btnReady.addActionListener(e -> {
+            try {
+                network.sendMsg("READY;" + roomName);
+                btnReady.setEnabled(false);
+                btnReady.setText("✅ Đã sẵn sàng");
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(this, "❌ Lỗi gửi lệnh sẵn sàng.");
+            }
+        });
+
+        // ═════════════════════════════════════════════════════════════════════════
+        // NÚT "RÚT BÀI"
+        // ═════════════════════════════════════════════════════════════════════════
+        // 📤 GỬI: "DRAW;roomName"
+        // 📨 NHẬN SAU ĐÓ: 
+        //    - "DRAW;K♠" (lá bài vừa rút)
+        //    - "WAIT" (chuyển lượt)
+        //    - "NOT_YOUR_TURN" (nếu gửi sai lượt)
+        // ═════════════════════════════════════════════════════════════════════════
         btnDraw.addActionListener(e -> {
             if (canDraw && cardsDrawn < 3) {
                 try {
@@ -185,24 +392,76 @@ public class GameScreen extends JFrame {
             }
         });
 
-        // ===== Nút "Kick" =====
+        // ═════════════════════════════════════════════════════════════════════════
+        // NÚT "KICK" - CHỈ HOST
+        // ═════════════════════════════════════════════════════════════════════════
+        // Xem chi tiết ở hàm kickPlayer()
+        // ═════════════════════════════════════════════════════════════════════════
         btnKick.addActionListener(e -> kickPlayer());
 
-        // ===== Nút "Thoát phòng" =====
+        // ═════════════════════════════════════════════════════════════════════════
+        // NÚT "THOÁT PHÒNG"
+        // ═════════════════════════════════════════════════════════════════════════
+        // Xem chi tiết ở hàm leaveRoom()
+        // ═════════════════════════════════════════════════════════════════════════
         btnLeave.addActionListener(e -> leaveRoom());
 
         setVisible(true);
     }
 
+    /**
+     * ═══════════════════════════════════════════════════════════════════════════
+     * HÀM XỬ LÝ TẤT CẢ MESSAGES NHẬN TỪ SERVER
+     * ═══════════════════════════════════════════════════════════════════════════
+     * 
+     * 📨 MESSAGES NHẬN (tất cả đều parse ở đây):
+     * 
+     * • "GAME_START;RoomName" → Reset UI, xóa bài cũ, cache
+     * • "YOUR_TURN" → Enable nút rút bài, bắt đầu timer 10s
+     * • "WAIT" → Disable nút rút, dừng timer
+     * • "DRAW;K♠" → Hiển thị lá bài vừa rút lên ô trống
+     * • "SHOW_HANDS_ALL|user1=K♠,Q♠,J♠|user2=..." → Lật tất cả bài
+     * • "HAND_RANKS|user1:4:Straight Flush:530|..." → Hiển thị loại tay
+     * • "WINNER player1 tay=..." → Popup thông báo thắng, highlight
+     * • "RANKING|user1:15:+3|user2:8:-1|..." → Dialog xếp hạng đầy đủ
+     * • "END;RoomName" → Ván kết thúc, reset ready
+     * • "ROOM_UPDATE|room|host|players" → Cập nhật vị trí ngồi
+     * • "READY_STATUS|user1:true|user2:false|..." → Icon ✅/❌
+     * • "YOU_ARE_HOST" → Trở thành host, đổi UI
+     * • "ELIMINATED;reason" → Bị kick, về lobby
+     * • "KICKED;reason" → Bị host kick, về lobby
+     * • "PLAYER_LIST|user1:status:pts|..." → Update list online
+     * • "INVITE;fromUser;roomName" → Nhận lời mời
+     * • "ROOM_FULL" → Phòng đầy
+     * • "NOT_HOST" → Không có quyền
+     * • "NOT_YOUR_TURN" → Chưa đến lượt
+     * 
+     * ⚠️  KHÔNG GỬI MESSAGE NÀO TỪ HÀM NÀY
+     * (Chỉ nhận và xử lý hiển thị)
+     * 
+     * ═══════════════════════════════════════════════════════════════════════════
+     */
     private void handleGameMessage(String msg) {
         System.out.println("🎮 [Game] Nhận: " + msg);
 
-        if (msg.startsWith("READY")) {
+        if (msg.startsWith("GAME_START")) {
             SwingUtilities.invokeLater(() -> {
-                // Reset tất cả bài (text + icon)
+                // Reset tất cả bài và thông tin tay bài cho ván mới
                 for (int i = 0; i < 6; i++) {
+                    // Reset các lá bài
                     for (int j = 0; j < 3; j++) {
                         resetCardLabel(cardLabels[i][j]);
+                    }
+                    // Reset label tên (loại bỏ thông tin tay bài)
+                    String labelText = playerNameLabels[i].getText();
+                    if (!labelText.equals("[Trống]") && labelText.contains(" - ")) {
+                        String playerName = labelText.split(" - ")[0];
+                        playerNameLabels[i].setText(playerName);
+                    }
+                    // Reset border và màu nền
+                    if (!labelText.equals("[Trống]")) {
+                        playerPanels[i].setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
+                        playerPanels[i].setBackground(new Color(240, 248, 255)); // AliceBlue
                     }
                 }
                 cardsDrawn = 0;
@@ -210,7 +469,12 @@ public class GameScreen extends JFrame {
                 canDraw = false;
                 btnDraw.setEnabled(false);
                 lblTurnInfo.setText("Chờ lượt...");
-                JOptionPane.showMessageDialog(this, "Trò chơi bắt đầu!");
+
+                // Xóa cache kết quả ván trước
+                cachedHandRanks.clear();
+                cachedPlayerCards.clear();
+
+                JOptionPane.showMessageDialog(this, "🎮 Trò chơi bắt đầu! Rút bài theo lượt.");
             });
         } else if (msg.startsWith("HAND ")) {
             // HAND v1,v2,v3: 3 lá đầu
@@ -272,6 +536,7 @@ public class GameScreen extends JFrame {
             SwingUtilities.invokeLater(() -> {
                 // Map username->hand
                 String[] entries = payload.split("\\|");
+                cachedPlayerCards.clear(); // Reset cache
                 for (int i = 0; i < 6; i++) {
                     for (int j = 0; j < 3; j++) {
                         resetCardLabel(cardLabels[i][j]);
@@ -285,10 +550,16 @@ public class GameScreen extends JFrame {
                         continue;
                     String user = e.substring(0, eq);
                     String cardsStr = e.substring(eq + 1);
+
+                    // Lưu vào cache
+                    if (!cardsStr.isEmpty()) {
+                        cachedPlayerCards.put(user, cardsStr);
+                    }
+
                     // Tìm vị trí user trong playerNameLabels
                     int pos = -1;
                     for (int i = 0; i < 6; i++) {
-                        if (playerNameLabels[i].getText().equals(user)) {
+                        if (playerNameLabels[i].getText().contains(user)) {
                             pos = i;
                             break;
                         }
@@ -321,17 +592,26 @@ public class GameScreen extends JFrame {
             String reason = msg.split(";")[1];
             SwingUtilities.invokeLater(() -> {
                 stopCountdown();
-                // Stop listening trước khi quay về lobby
-                network.stopListening();
                 JOptionPane.showMessageDialog(this, "❌ Bạn đã bị kick: " + reason);
-                // Quay về LobbyScreen
-                new LobbyScreen(username, network).setVisible(true);
+                // Dừng lắng nghe GameScreen trước khi chuyển về lobby để tránh 2 thread đọc
+                // cùng 1 luồng.
+                network.stopListening();
+                LobbyScreen lobby = new LobbyScreen(username, network);
+                lobby.setVisible(true);
                 dispose();
             });
         } else if (msg.startsWith("YOU_ARE_HOST")) {
             SwingUtilities.invokeLater(() -> {
                 isHost = true;
                 setTitle("Phòng " + roomName + " - " + username + " (Chủ phòng)");
+                // Hiển thị nút Start cho host mới, ẩn nút Ready
+                btnReady.setVisible(false);
+                btnStart.setVisible(true);
+                btnStart.setEnabled(false); // Chờ người khác ready
+                btnKick.setVisible(true);
+                btnKick.setEnabled(true);
+                System.out.println(
+                        "[DEBUG] YOU_ARE_HOST: Updated UI - btnStart visible, btnReady hidden, btnKick enabled");
             });
         } else if (msg.startsWith("ROOM_UPDATE")) {
             // Format: ROOM_UPDATE|roomName|hostIndex|player1,player2,player3
@@ -371,6 +651,53 @@ public class GameScreen extends JFrame {
                     }
                 }
             });
+        } else if (msg.startsWith("READY_STATUS|")) {
+            // Format: READY_STATUS|user1:true|user2:false|...
+            SwingUtilities.invokeLater(() -> {
+                String data = msg.substring("READY_STATUS|".length());
+                String[] tokens = data.split("\\|");
+                playersReadyStatus.clear();
+                for (String token : tokens) {
+                    if (token.isEmpty())
+                        continue;
+                    String[] kv = token.split(":");
+                    if (kv.length == 2) {
+                        playersReadyStatus.put(kv[0], Boolean.parseBoolean(kv[1]));
+                    }
+                }
+                updateReadyDisplay();
+                // Nếu là host, kiểm tra xem tất cả sẵn sàng chưa để bật nút Start
+                if (isHost) {
+                    // Đếm tổng số người và số khách đã ready
+                    int totalPlayers = playersReadyStatus.size();
+                    int guestsReady = 0;
+                    int totalGuests = 0;
+
+                    for (Map.Entry<String, Boolean> e : playersReadyStatus.entrySet()) {
+                        if (!e.getKey().equals(username)) { // Không phải host
+                            totalGuests++;
+                            if (e.getValue()) {
+                                guestsReady++;
+                            }
+                        }
+                    }
+
+                    // Enable Start CHỈ KHI: có ít nhất 2 người (host + 1 khách) && TẤT CẢ khách đã
+                    // ready
+                    // totalPlayers >= 2 có nghĩa là có host + ít nhất 1 khách
+                    // totalGuests >= 1 đảm bảo có ít nhất 1 khách
+                    // guestsReady == totalGuests đảm bảo TẤT CẢ khách đều ready
+                    boolean canStart = totalPlayers >= 2 && totalGuests >= 1 && guestsReady == totalGuests;
+                    btnStart.setEnabled(canStart);
+
+                    System.out.println("DEBUG Ready Check:");
+                    System.out.println("  Total players: " + totalPlayers);
+                    System.out.println("  Total guests: " + totalGuests);
+                    System.out.println("  Guests ready: " + guestsReady);
+                    System.out.println("  Can start: " + canStart);
+                    System.out.println("  Ready map: " + playersReadyStatus);
+                }
+            });
         } else if (msg.equals("ROOM_FULL")) {
             SwingUtilities.invokeLater(() -> {
                 JOptionPane.showMessageDialog(this, "❌ Phòng đã đầy (tối đa 6 người)!");
@@ -379,14 +706,67 @@ public class GameScreen extends JFrame {
             SwingUtilities.invokeLater(() -> {
                 JOptionPane.showMessageDialog(this, "❌ Chỉ chủ phòng mới có quyền này!");
             });
-        } else if (msg.startsWith("RANKING|")) {
-            String payload = msg.substring("RANKING|".length());
+        } else if (msg.startsWith("HAND_RANKS|")) {
+            // Format: HAND_RANKS|user1:category:categoryName:score|user2:...
+            String payload = msg.substring("HAND_RANKS|".length());
             SwingUtilities.invokeLater(() -> {
-                StringBuilder rankingMsg = new StringBuilder("🏆 BẢNG XẾP HẠNG 🏆\n\n");
+                cachedHandRanks.clear(); // Reset cache
                 String[] entries = payload.split("\\|");
                 for (String entry : entries) {
-                    if (!entry.isEmpty()) {
-                        rankingMsg.append(entry).append("\n");
+                    if (entry.isEmpty())
+                        continue;
+                    String[] parts = entry.split(":");
+                    if (parts.length >= 4) {
+                        String user = parts[0];
+                        int category = Integer.parseInt(parts[1]);
+                        String categoryName = parts[2];
+                        String score = parts[3];
+
+                        // Chỉ hiển thị điểm cho HighCard (category = 1)
+                        String displayText = (category == 1) ? categoryName + " (" + score + ")" : categoryName;
+                        cachedHandRanks.put(user, displayText);
+                    }
+                }
+                // Hiển thị thứ hạng tay bài trên label của từng người
+                for (int i = 0; i < 6; i++) {
+                    String labelText = playerNameLabels[i].getText();
+                    if (labelText.equals("[Trống]"))
+                        continue;
+
+                    // Tách tên người chơi (loại bỏ phần " - ..." nếu có)
+                    String playerName = labelText.split(" - ")[0];
+                    if (cachedHandRanks.containsKey(playerName)) {
+                        playerNameLabels[i].setText(playerName + " - " + cachedHandRanks.get(playerName));
+                    }
+                }
+            });
+        } else if (msg.startsWith("RANKING|")) {
+            // Format: RANKING|user1:totalPoints:changePoints|user2:...
+            String payload = msg.substring("RANKING|".length());
+            SwingUtilities.invokeLater(() -> {
+                StringBuilder rankingMsg = new StringBuilder("🏆 KẾT QUẢ VÁN ĐẤU 🏆\n\n");
+                String[] entries = payload.split("\\|");
+                int rank = 1;
+                for (String entry : entries) {
+                    if (entry.isEmpty())
+                        continue;
+                    String[] parts = entry.split(":");
+                    if (parts.length >= 3) {
+                        String user = parts[0];
+                        String totalPts = parts[1];
+                        int change = Integer.parseInt(parts[2]);
+                        String changeStr = (change > 0) ? "+" + change : String.valueOf(change);
+
+                        // Lấy thông tin tay bài và bài từ cache
+                        String handRank = cachedHandRanks.getOrDefault(user, "N/A");
+                        String cards = cachedPlayerCards.getOrDefault(user, "N/A");
+
+                        rankingMsg.append(rank).append(". ").append(user)
+                                .append(": ").append(totalPts).append(" điểm ")
+                                .append("(").append(changeStr).append(")\n")
+                                .append("   Bài: ").append(cards).append("\n")
+                                .append("   Tay: ").append(handRank).append("\n\n");
+                        rank++;
                     }
                 }
                 JOptionPane.showMessageDialog(this, rankingMsg.toString(), "Xếp hạng", JOptionPane.INFORMATION_MESSAGE);
@@ -396,11 +776,32 @@ public class GameScreen extends JFrame {
                 stopCountdown();
                 canDraw = false;
                 btnDraw.setEnabled(false);
-                lblTurnInfo.setText("🏁 Game kết thúc!");
+                lblTurnInfo.setText("🏁 Game kết thúc! Mọi người xem bài nhau. Sẵn sàng cho ván mới nào!");
+                // Không reset bài ở đây - để mọi người vẫn thấy bài đã lật
+                // Bài sẽ được reset khi GAME_START mới
+                // Reset ready cho ván mới
+                if (!isHost) {
+                    btnReady.setEnabled(true);
+                    btnReady.setText("Sẵn sàng");
+                } else {
+                    btnStart.setEnabled(false); // Chờ mọi người ready
+                }
             });
         }
     }
 
+    /**
+     * ───────────────────────────────────────────────────────────────────────────
+     * CẬP NHẬT HIỂN THỊ BÀI VỪA RÚT
+     * ───────────────────────────────────────────────────────────────────────────
+     * 
+     * 📨 NHẬN: Được gọi từ handleGameMessage khi nhận "DRAW;K♠"
+     * 📤 GỬI: KHÔNG gửi message nào
+     * 
+     * Logic: Tìm ô trống đầu tiên trong 3 ô bài của mình, hiển thị ảnh lá bài
+     * 
+     * ───────────────────────────────────────────────────────────────────────────
+     */
     private void updateCardDisplay(String value) {
         if (myPosition == -1)
             myPosition = 3; // vị trí mặc định của mình
@@ -413,13 +814,25 @@ public class GameScreen extends JFrame {
         }
     }
 
-    // ===== Helpers ảnh lá bài =====
+    // ═════════════════════════════════════════════════════════════════════════
+    // HELPERS ẢNH LÁ BÀI - KHÔNG GỬI/NHẬN MESSAGE
+    // ═════════════════════════════════════════════════════════════════════════
+    
+    /**
+     * Reset 1 ô bài về trạng thái trống
+     * 📨 NHẬN: KHÔNG | 📤 GỬI: KHÔNG
+     */
     private void resetCardLabel(JLabel lbl) {
         lbl.setText("");
         lbl.setIcon(null);
         lbl.setBackground(Color.WHITE);
     }
 
+    /**
+     * Hiển thị ảnh lá bài lên label
+     * 📨 NHẬN: KHÔNG | 📤 GỬI: KHÔNG
+     * @param cardValue Format: "K♠", "A♥", "10♦", etc.
+     */
     private void setCardLabelImage(JLabel lbl, String cardValue) {
         ImageIcon icon = loadCardIcon(cardValue);
         if (icon != null) {
@@ -432,6 +845,16 @@ public class GameScreen extends JFrame {
         }
     }
 
+    /**
+     * Load ảnh lá bài từ thư mục PNG-cards-1.3/
+     * 📨 NHẬN: KHÔNG | 📤 GỬI: KHÔNG
+     * 
+     * Map: K♠ → king_of_spades.png
+     *      A♥ → ace_of_hearts.png
+     *      10♦ → 10_of_diamonds.png
+     * 
+     * Cache ảnh để không load lại nhiều lần
+     */
     private ImageIcon loadCardIcon(String cardValue) {
         if (cardValue == null || cardValue.isEmpty())
             return null;
@@ -493,7 +916,21 @@ public class GameScreen extends JFrame {
         return scaledIcon;
     }
 
-    // Cập nhật danh sách người chơi trong phòng
+    /**
+     * ───────────────────────────────────────────────────────────────────────────
+     * CẬP NHẬT VỊ TRÍ NGỒI CỦA MỌI NGƯỜI
+     * ───────────────────────────────────────────────────────────────────────────
+     * 
+     * 📨 NHẬN: Được gọi từ handleGameMessage khi nhận:
+     *         "ROOM_UPDATE|roomName|hostIndex|player1,player2,player3"
+     * 
+     * 📤 GỬI: KHÔNG gửi message nào
+     * 
+     * Logic: Map danh sách players vào 6 panel vị trí ngồi
+     *        Highlight panel của mình bằng màu xanh dương
+     * 
+     * ───────────────────────────────────────────────────────────────────────────
+     */
     private void updateRoomPlayers(String[] players) {
         SwingUtilities.invokeLater(() -> {
             for (int i = 0; i < 6; i++) {
@@ -509,10 +946,56 @@ public class GameScreen extends JFrame {
                     playerPanels[i].setBackground(Color.LIGHT_GRAY);
                 }
             }
+            updateReadyDisplay();
         });
     }
 
-    // Cập nhật danh sách người chơi online
+    /**
+     * ───────────────────────────────────────────────────────────────────────────
+     * CẬP NHẬT ICON SẴN SÀNG (✅/❌) TRÊN TÊN NGƯỜI CHƠI
+     * ───────────────────────────────────────────────────────────────────────────
+     * 
+     * 📨 NHẬN: Được gọi sau khi parse "READY_STATUS|user1:true|user2:false|..."
+     * 📤 GỬI: KHÔNG gửi message nào
+     * 
+     * Logic: Dựa vào playersReadyStatus map để hiển thị ✅ (ready) hoặc ❌ (not ready)
+     * 
+     * ───────────────────────────────────────────────────────────────────────────
+     */
+    private void updateReadyDisplay() {
+        // Hiển thị trạng thái sẵn sàng trên tên người chơi
+        for (int i = 0; i < 6; i++) {
+            String name = playerNameLabels[i].getText();
+            if (!name.equals("[Trống]") && !name.startsWith("[")) {
+                // Loại bỏ icon cũ (nếu có)
+                String cleanName = name.replaceAll("✅|❌", "").trim();
+                Boolean ready = playersReadyStatus.get(cleanName);
+                if (ready != null && ready) {
+                    playerNameLabels[i].setText("✅ " + cleanName);
+                } else if (ready != null) {
+                    playerNameLabels[i].setText("❌ " + cleanName);
+                } else {
+                    playerNameLabels[i].setText(cleanName);
+                }
+            }
+        }
+    }
+
+    /**
+     * ───────────────────────────────────────────────────────────────────────────
+     * CẬP NHẬT DANH SÁCH NGƯỜI CHƠI ONLINE (PANEL TRÁI)
+     * ───────────────────────────────────────────────────────────────────────────
+     * 
+     * 📨 NHẬN: Được gọi từ handleGameMessage khi nhận:
+     *         "PLAYER_LIST|user1:status:pts|user2:status:pts|..."
+     * 
+     * 📤 GỬI: KHÔNG gửi message nào
+     * 
+     * Logic: Parse format "username:status:points" và hiển thị "name (status)"
+     *        Loại bỏ chính mình khỏi list
+     * 
+     * ───────────────────────────────────────────────────────────────────────────
+     */
     private void updateOnlineList(String[] players) {
         SwingUtilities.invokeLater(() -> {
             onlineListModel.clear();
@@ -534,7 +1017,21 @@ public class GameScreen extends JFrame {
         });
     }
 
-    // Mời người chơi
+    /**
+     * ───────────────────────────────────────────────────────────────────────────
+     * MỜI NGƯỜI CHƠI VÀO PHÒNG
+     * ───────────────────────────────────────────────────────────────────────────
+     * 
+     * 📨 NHẬN: KHÔNG nhận message nào (chỉ gửi)
+     * 
+     * 📤 GỬI: "INVITE;targetUsername"
+     *        Ví dụ: "INVITE;player2"
+     * 
+     * Logic: Lấy người được chọn từ list online, gửi lời mời
+     *        Người nhận sẽ nhận được "INVITE;fromUser;roomName"
+     * 
+     * ───────────────────────────────────────────────────────────────────────────
+     */
     private void invitePlayer() {
         String selected = onlinePlayersList.getSelectedValue();
         if (selected != null) {
@@ -553,7 +1050,24 @@ public class GameScreen extends JFrame {
         }
     }
 
-    // Kick người chơi (chỉ host)
+    /**
+     * ───────────────────────────────────────────────────────────────────────────
+     * KICK NGƯỜI CHƠI (CHỈ HOST)
+     * ───────────────────────────────────────────────────────────────────────────
+     * 
+     * 📨 NHẬN: Server có thể trả về:
+     *         "NOT_HOST" - nếu không phải host
+     *         "KICK_BLOCKED;..." - nếu game đang chạy
+     * 
+     * 📤 GỬI: "KICK_PLAYER;targetUsername"
+     *        Ví dụ: "KICK_PLAYER;player3"
+     * 
+     * Logic: Chỉ host mới được kick
+     *        Chọn người từ dropdown, gửi lệnh kick
+     *        Người bị kick sẽ nhận "KICKED;reason"
+     * 
+     * ───────────────────────────────────────────────────────────────────────────
+     */
     private void kickPlayer() {
         if (!isHost) {
             JOptionPane.showMessageDialog(this, "Chỉ chủ phòng mới có thể kick!");
@@ -564,6 +1078,8 @@ public class GameScreen extends JFrame {
         int count = 0;
         for (int i = 0; i < 6; i++) {
             String name = playerNameLabels[i].getText();
+            // Loại bỏ emoji ✅ hoặc ❌ nếu có
+            name = name.replaceAll("^[✅❌]\\s*", "");
             if (!name.equals("[Trống]") && !name.equals(username)) {
                 players[count++] = name;
             }
@@ -595,7 +1111,21 @@ public class GameScreen extends JFrame {
         }
     }
 
-    // Thoát khỏi phòng
+    /**
+     * ───────────────────────────────────────────────────────────────────────────
+     * THOÁT KHỎI PHÒNG
+     * ───────────────────────────────────────────────────────────────────────────
+     * 
+     * 📨 NHẬN: KHÔNG nhận message trả về (chỉ gửi)
+     * 
+     * 📤 GỬI: "LEAVE_ROOM;roomName"
+     *        Ví dụ: "LEAVE_ROOM;Room1"
+     * 
+     * Logic: Dừng timer, gửi lệnh thoát, về LobbyScreen
+     *        Server sẽ removePlayer và broadcast ROOM_UPDATE cho người còn lại
+     * 
+     * ───────────────────────────────────────────────────────────────────────────
+     */
     private void leaveRoom() {
         int choice = JOptionPane.showConfirmDialog(
                 this,
@@ -617,7 +1147,20 @@ public class GameScreen extends JFrame {
         }
     }
 
-    // Bắt đầu countdown 10s
+    /**
+     * ───────────────────────────────────────────────────────────────────────────
+     * BẮT ĐẦU ĐẾM NGƯỢC 10 GIÂY
+     * ───────────────────────────────────────────────────────────────────────────
+     * 
+     * 📨 NHẬN: Được gọi khi nhận "YOUR_TURN" từ server
+     * 📤 GỬI: KHÔNG gửi message nào
+     * 
+     * Logic: Timer đếm ngược từ 10→0
+     *        Màu đỏ khi ≤3s
+     *        Nếu hết giờ, server tự động kick (nhận "ELIMINATED")
+     * 
+     * ───────────────────────────────────────────────────────────────────────────
+     */
     private void startCountdown() {
         stopCountdown();
         timeLeft = 10;
@@ -643,7 +1186,18 @@ public class GameScreen extends JFrame {
         }, 1000, 1000);
     }
 
-    // Dừng countdown
+    /**
+     * ───────────────────────────────────────────────────────────────────────────
+     * DỪNG ĐẾM NGƯỢC
+     * ───────────────────────────────────────────────────────────────────────────
+     * 
+     * 📨 NHẬN: Được gọi khi nhận "WAIT" hoặc "END" từ server
+     * 📤 GỬI: KHÔNG gửi message nào
+     * 
+     * Logic: Hủy timer, reset timeLeft về 10
+     * 
+     * ───────────────────────────────────────────────────────────────────────────
+     */
     private void stopCountdown() {
         if (countdownTimer != null) {
             countdownTimer.cancel();
