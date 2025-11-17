@@ -1,5 +1,7 @@
-package server;
+package server.game;
 
+import server.models.Card;
+import server.models.HandRank;
 import java.util.*;
 
 public class HandEvaluator {

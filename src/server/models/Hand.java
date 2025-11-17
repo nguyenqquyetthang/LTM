@@ -1,5 +1,6 @@
-package server;
+package server.models;
 
+import server.game.HandEvaluator;
 import java.util.*;
 
 public class Hand {

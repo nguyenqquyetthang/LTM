@@ -1,4 +1,6 @@
-package server;
+package server.models;
+
+
 
 // Lá bài với chất và hạng hiển thị (ví dụ: A♠)
 public class Card {

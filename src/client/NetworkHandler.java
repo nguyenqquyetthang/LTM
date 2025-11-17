@@ -154,8 +154,10 @@ public class NetworkHandler {
 
     public void startListening(MessageHandler handler) {
         stopListening(); // Ngừng luồng cũ nếu có
+        System.out.println("🎧 [NetworkHandler] Starting new listener thread...");
         listenThread = new Thread(() -> {
             try {
+                System.out.println("✅ [NetworkHandler] Listener thread started, waiting for messages...");
                 while (!Thread.currentThread().isInterrupted()) {
                     String msg = in.readUTF();
                     handler.onMessage(msg);

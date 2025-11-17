@@ -125,24 +125,20 @@ public class RoomThread extends Thread {
     private Database db;
     private Integer matchId; // ID ván đấu trong DB
 
-    // Turn-based system
-    private int currentTurn = 0; // Index của người chơi hiện tại
+    // Room management
     private int hostIndex = 0; // Index của chủ phòng
-    // private Map<Integer, Integer> playerDrawnCount = new HashMap<>(); // legacy
-    private Timer turnTimer;
     private boolean gameStarted = false;
-    private List<String> timeoutPlayers = new ArrayList<>(); // Danh sách người bị timeout trong ván này
-
-    // New round-based state
-    private Deck deck; // Bộ bài mới
-    private Map<String, Hand> playerHands = new HashMap<>(); // Bài của từng người
-    private Map<String, Integer> drawCounts = new HashMap<>(); // Mỗi người tối đa 3 lần rút
     private Map<String, Boolean> playerReady = new HashMap<>(); // Trạng thái sẵn sàng của từng người
+    
+    // Delegate game logic & turn management
+    private GameLogic gameLogic = new GameLogic();
+    private TurnManager turnManager = new TurnManager(gameLogic);
 
     public RoomThread(String name, Map<String, RoomThread> rooms, Database db) {
         this.roomName = name;
         this.rooms = rooms;
         this.db = db;
+        this.turnManager.setRoomThread(this);
     }
 
     public synchronized boolean isFull() {
@@ -182,10 +178,11 @@ public class RoomThread extends Thread {
 
         // Cập nhật currentTurn nếu cần
         if (gameStarted && !players.isEmpty()) {
+            int currentTurn = turnManager.getCurrentTurn();
             if (currentTurn >= players.size()) {
-                currentTurn = 0;
+                turnManager.adjustTurnAfterRemoval(currentTurn, players.size());
             }
-            notifyCurrentTurn();
+            turnManager.notifyCurrentTurn(players);
         }
 
         // LUÔN broadcast ROOM_UPDATE khi có người rời phòng
@@ -195,9 +192,7 @@ public class RoomThread extends Thread {
         }
 
         if (players.isEmpty()) {
-            if (turnTimer != null) {
-                turnTimer.cancel();
-            }
+            turnManager.cancelTimer();
             rooms.remove(roomName);
             this.interrupt();
             // Sau khi phòng bị xóa (trống) -> broadcast danh sách phòng
@@ -261,26 +256,23 @@ public class RoomThread extends Thread {
             return;
         }
         gameStarted = true;
-        timeoutPlayers.clear(); // Reset danh sách timeout
-        deck = new Deck();
-        deck.shuffle();
-        // Không chia lá ban đầu: mọi người bắt đầu với 0 lá
-        playerHands.clear();
-        drawCounts.clear();
+        
+        // Khởi tạo game logic & turn manager
+        gameLogic.initializeNewRound(players);
+        turnManager.initializeTurn(hostIndex);
+        
         playerReady.clear(); // Reset ready sau khi bắt đầu
         synchronized (players) {
             for (ClientHandler c : players) {
                 c.setStatus("playing");
-                drawCounts.put(c.username, 0);
             }
         }
         // Thông báo bắt đầu ván; UI sẽ reset từ GAME_START
         broadcast("GAME_START;" + roomName);
         broadcast("SYSTEM Ván bài bắt đầu! Rút theo lượt, mỗi người tối đa 3 lá.");
-        currentTurn = hostIndex; // Chủ phòng đi trước
         broadcastRoomUpdate();
-        notifyCurrentTurn();
-        startTurnTimer();
+        turnManager.notifyCurrentTurn(players);
+        turnManager.startTurnTimer();
         // Tạo mới bản ghi Matches
         matchId = db != null ? db.createMatch(players.size()) : null;
         System.out.println("🎮 " + roomName + " bắt đầu, MatchID=" + matchId + ", không chia bài ban đầu.");
@@ -292,6 +284,7 @@ public class RoomThread extends Thread {
         // Giữ method cũ (không dùng nữa) để tương thích nếu còn tham chiếu
         if (!gameStarted)
             return;
+        int currentTurn = turnManager.getCurrentTurn();
         if (playerID != currentTurn) {
             if (playerID >= 0 && playerID < players.size())
                 players.get(playerID).sendMessage("NOT_YOUR_TURN");
@@ -344,51 +337,15 @@ public class RoomThread extends Thread {
             endGame();
             return;
         }
-        int tried = 0;
-        do {
-            currentTurn--; // ngược chiều kim đồng hồ
-            if (currentTurn < 0)
-                currentTurn = players.size() - 1;
-            tried++;
-            // kết thúc nếu đã thử qua tất cả người chơi
-            if (tried > players.size()) {
-                endGame();
-                return;
-            }
-        } while (drawCounts.getOrDefault(players.get(currentTurn).username, 0) >= 3);
-
-        notifyCurrentTurn();
-        startTurnTimer();
-    }
-
-    // Thông báo lượt hiện tại
-    private synchronized void notifyCurrentTurn() {
-        if (players.isEmpty() || !gameStarted)
+        
+        boolean hasNextTurn = turnManager.nextTurn(players);
+        if (!hasNextTurn) {
+            endGame();
             return;
-
-        for (int i = 0; i < players.size(); i++) {
-            if (i == currentTurn) {
-                players.get(i).sendMessage("YOUR_TURN");
-            } else {
-                players.get(i).sendMessage("WAIT");
-            }
         }
-    }
-
-    // Bắt đầu timer 10s
-    private synchronized void startTurnTimer() {
-        if (turnTimer != null) {
-            turnTimer.cancel();
-            turnTimer = null; // Fix memory leak
-        }
-
-        turnTimer = new Timer();
-        turnTimer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                handleTimeout();
-            }
-        }, 10000); // 10 giây
+        
+        turnManager.notifyCurrentTurn(players);
+        turnManager.startTurnTimer();
     }
 
     // Xử lý timeout - kick người chơi

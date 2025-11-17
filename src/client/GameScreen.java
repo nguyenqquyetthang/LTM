@@ -331,7 +331,7 @@ public class GameScreen extends JFrame {
         // ═════════════════════════════════════════════════════════════════════════
         // GỬI NGAY KHI VÀO PHÒNG
         // ═════════════════════════════════════════════════════════════════════════
-        // 📤 GỬI: "GET_PLAYER_LIST" → nhận "PLAYER_LIST|..." 
+        // 📤 GỬI: "GET_PLAYER_LIST" → nhận "PLAYER_LIST|..."
         // 📤 GỬI: "GET_ROOM_UPDATE;roomName" → nhận "ROOM_UPDATE|..."
         // ═════════════════════════════════════════════════════════════════════════
         try {
@@ -376,10 +376,10 @@ public class GameScreen extends JFrame {
         // NÚT "RÚT BÀI"
         // ═════════════════════════════════════════════════════════════════════════
         // 📤 GỬI: "DRAW;roomName"
-        // 📨 NHẬN SAU ĐÓ: 
-        //    - "DRAW;K♠" (lá bài vừa rút)
-        //    - "WAIT" (chuyển lượt)
-        //    - "NOT_YOUR_TURN" (nếu gửi sai lượt)
+        // 📨 NHẬN SAU ĐÓ:
+        // - "DRAW;K♠" (lá bài vừa rút)
+        // - "WAIT" (chuyển lượt)
+        // - "NOT_YOUR_TURN" (nếu gửi sai lượt)
         // ═════════════════════════════════════════════════════════════════════════
         btnDraw.addActionListener(e -> {
             if (canDraw && cardsDrawn < 3) {
@@ -436,7 +436,7 @@ public class GameScreen extends JFrame {
      * • "NOT_HOST" → Không có quyền
      * • "NOT_YOUR_TURN" → Chưa đến lượt
      * 
-     * ⚠️  KHÔNG GỬI MESSAGE NÀO TỪ HÀM NÀY
+     * ⚠️ KHÔNG GỬI MESSAGE NÀO TỪ HÀM NÀY
      * (Chỉ nhận và xử lý hiển thị)
      * 
      * ═══════════════════════════════════════════════════════════════════════════
@@ -469,6 +469,9 @@ public class GameScreen extends JFrame {
                 canDraw = false;
                 btnDraw.setEnabled(false);
                 lblTurnInfo.setText("Chờ lượt...");
+
+                // Vô hiệu hóa nút Kick khi game bắt đầu
+                btnKick.setEnabled(false);
 
                 // Xóa cache kết quả ván trước
                 cachedHandRanks.clear();
@@ -590,15 +593,23 @@ public class GameScreen extends JFrame {
             });
         } else if (msg.startsWith("KICKED;")) {
             String reason = msg.split(";")[1];
+            System.out.println("🚪 [GameScreen] Received KICKED: " + reason);
             SwingUtilities.invokeLater(() -> {
                 stopCountdown();
-                JOptionPane.showMessageDialog(this, "❌ Bạn đã bị kick: " + reason);
-                // Dừng lắng nghe GameScreen trước khi chuyển về lobby để tránh 2 thread đọc
-                // cùng 1 luồng.
-                network.stopListening();
+
+                System.out.println("🔄 [GameScreen] Creating LobbyScreen...");
+                // Khởi tạo LobbyScreen mới - constructor sẽ startListening()
+                // Server sẽ broadcast PLAYER_LIST và ROOMS_LIST sau KICKED
                 LobbyScreen lobby = new LobbyScreen(username, network);
+                System.out.println("✅ [GameScreen] LobbyScreen created");
+
                 lobby.setVisible(true);
+                System.out.println("✅ [GameScreen] LobbyScreen visible");
+
                 dispose();
+                System.out.println("✅ [GameScreen] GameScreen disposed");
+
+                JOptionPane.showMessageDialog(lobby, "❌ Bạn đã bị kick: " + reason);
             });
         } else if (msg.startsWith("YOU_ARE_HOST")) {
             SwingUtilities.invokeLater(() -> {
@@ -777,6 +788,12 @@ public class GameScreen extends JFrame {
                 canDraw = false;
                 btnDraw.setEnabled(false);
                 lblTurnInfo.setText("🏁 Game kết thúc! Mọi người xem bài nhau. Sẵn sàng cho ván mới nào!");
+
+                // Enable lại nút Kick cho host khi game kết thúc
+                if (isHost) {
+                    btnKick.setEnabled(true);
+                }
+
                 // Không reset bài ở đây - để mọi người vẫn thấy bài đã lật
                 // Bài sẽ được reset khi GAME_START mới
                 // Reset ready cho ván mới
@@ -817,7 +834,7 @@ public class GameScreen extends JFrame {
     // ═════════════════════════════════════════════════════════════════════════
     // HELPERS ẢNH LÁ BÀI - KHÔNG GỬI/NHẬN MESSAGE
     // ═════════════════════════════════════════════════════════════════════════
-    
+
     /**
      * Reset 1 ô bài về trạng thái trống
      * 📨 NHẬN: KHÔNG | 📤 GỬI: KHÔNG
@@ -831,6 +848,7 @@ public class GameScreen extends JFrame {
     /**
      * Hiển thị ảnh lá bài lên label
      * 📨 NHẬN: KHÔNG | 📤 GỬI: KHÔNG
+     * 
      * @param cardValue Format: "K♠", "A♥", "10♦", etc.
      */
     private void setCardLabelImage(JLabel lbl, String cardValue) {
@@ -850,8 +868,8 @@ public class GameScreen extends JFrame {
      * 📨 NHẬN: KHÔNG | 📤 GỬI: KHÔNG
      * 
      * Map: K♠ → king_of_spades.png
-     *      A♥ → ace_of_hearts.png
-     *      10♦ → 10_of_diamonds.png
+     * A♥ → ace_of_hearts.png
+     * 10♦ → 10_of_diamonds.png
      * 
      * Cache ảnh để không load lại nhiều lần
      */
@@ -922,12 +940,12 @@ public class GameScreen extends JFrame {
      * ───────────────────────────────────────────────────────────────────────────
      * 
      * 📨 NHẬN: Được gọi từ handleGameMessage khi nhận:
-     *         "ROOM_UPDATE|roomName|hostIndex|player1,player2,player3"
+     * "ROOM_UPDATE|roomName|hostIndex|player1,player2,player3"
      * 
      * 📤 GỬI: KHÔNG gửi message nào
      * 
      * Logic: Map danh sách players vào 6 panel vị trí ngồi
-     *        Highlight panel của mình bằng màu xanh dương
+     * Highlight panel của mình bằng màu xanh dương
      * 
      * ───────────────────────────────────────────────────────────────────────────
      */
@@ -958,7 +976,8 @@ public class GameScreen extends JFrame {
      * 📨 NHẬN: Được gọi sau khi parse "READY_STATUS|user1:true|user2:false|..."
      * 📤 GỬI: KHÔNG gửi message nào
      * 
-     * Logic: Dựa vào playersReadyStatus map để hiển thị ✅ (ready) hoặc ❌ (not ready)
+     * Logic: Dựa vào playersReadyStatus map để hiển thị ✅ (ready) hoặc ❌ (not
+     * ready)
      * 
      * ───────────────────────────────────────────────────────────────────────────
      */
@@ -987,12 +1006,12 @@ public class GameScreen extends JFrame {
      * ───────────────────────────────────────────────────────────────────────────
      * 
      * 📨 NHẬN: Được gọi từ handleGameMessage khi nhận:
-     *         "PLAYER_LIST|user1:status:pts|user2:status:pts|..."
+     * "PLAYER_LIST|user1:status:pts|user2:status:pts|..."
      * 
      * 📤 GỬI: KHÔNG gửi message nào
      * 
      * Logic: Parse format "username:status:points" và hiển thị "name (status)"
-     *        Loại bỏ chính mình khỏi list
+     * Loại bỏ chính mình khỏi list
      * 
      * ───────────────────────────────────────────────────────────────────────────
      */
@@ -1025,10 +1044,10 @@ public class GameScreen extends JFrame {
      * 📨 NHẬN: KHÔNG nhận message nào (chỉ gửi)
      * 
      * 📤 GỬI: "INVITE;targetUsername"
-     *        Ví dụ: "INVITE;player2"
+     * Ví dụ: "INVITE;player2"
      * 
      * Logic: Lấy người được chọn từ list online, gửi lời mời
-     *        Người nhận sẽ nhận được "INVITE;fromUser;roomName"
+     * Người nhận sẽ nhận được "INVITE;fromUser;roomName"
      * 
      * ───────────────────────────────────────────────────────────────────────────
      */
@@ -1056,15 +1075,15 @@ public class GameScreen extends JFrame {
      * ───────────────────────────────────────────────────────────────────────────
      * 
      * 📨 NHẬN: Server có thể trả về:
-     *         "NOT_HOST" - nếu không phải host
-     *         "KICK_BLOCKED;..." - nếu game đang chạy
+     * "NOT_HOST" - nếu không phải host
+     * "KICK_BLOCKED;..." - nếu game đang chạy
      * 
      * 📤 GỬI: "KICK_PLAYER;targetUsername"
-     *        Ví dụ: "KICK_PLAYER;player3"
+     * Ví dụ: "KICK_PLAYER;player3"
      * 
      * Logic: Chỉ host mới được kick
-     *        Chọn người từ dropdown, gửi lệnh kick
-     *        Người bị kick sẽ nhận "KICKED;reason"
+     * Chọn người từ dropdown, gửi lệnh kick
+     * Người bị kick sẽ nhận "KICKED;reason"
      * 
      * ───────────────────────────────────────────────────────────────────────────
      */
@@ -1119,10 +1138,10 @@ public class GameScreen extends JFrame {
      * 📨 NHẬN: KHÔNG nhận message trả về (chỉ gửi)
      * 
      * 📤 GỬI: "LEAVE_ROOM;roomName"
-     *        Ví dụ: "LEAVE_ROOM;Room1"
+     * Ví dụ: "LEAVE_ROOM;Room1"
      * 
      * Logic: Dừng timer, gửi lệnh thoát, về LobbyScreen
-     *        Server sẽ removePlayer và broadcast ROOM_UPDATE cho người còn lại
+     * Server sẽ removePlayer và broadcast ROOM_UPDATE cho người còn lại
      * 
      * ───────────────────────────────────────────────────────────────────────────
      */
@@ -1156,8 +1175,8 @@ public class GameScreen extends JFrame {
      * 📤 GỬI: KHÔNG gửi message nào
      * 
      * Logic: Timer đếm ngược từ 10→0
-     *        Màu đỏ khi ≤3s
-     *        Nếu hết giờ, server tự động kick (nhận "ELIMINATED")
+     * Màu đỏ khi ≤3s
+     * Nếu hết giờ, server tự động kick (nhận "ELIMINATED")
      * 
      * ───────────────────────────────────────────────────────────────────────────
      */

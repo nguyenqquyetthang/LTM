@@ -61,7 +61,9 @@ public class LobbyScreen extends JFrame {
 
         // ===== Request danh sách người online + phòng ngay khi vào lobby =====
         try {
+            System.out.println("📤 [Lobby] Request GET_PLAYER_LIST");
             network.sendMsg("GET_PLAYER_LIST");
+            System.out.println("📤 [Lobby] Request GET_ROOMS");
             network.sendMsg("GET_ROOMS");
         } catch (IOException e) {
             System.err.println("⚠️ Không thể request danh sách người chơi/phòng");
@@ -152,9 +154,10 @@ public class LobbyScreen extends JFrame {
     }
 
     private void handleServerMessage(String msg) {
-        System.out.println("📨 [Lobby] Nhận: " + msg);
+        System.out.println("📨 [Lobby] Received: " + msg.substring(0, Math.min(50, msg.length())) + "...");
 
         if (msg.startsWith("PLAYER_LIST|")) {
+            System.out.println("✅ [Lobby] Processing PLAYER_LIST");
             String players = msg.substring("PLAYER_LIST|".length());
             // Parse dạng username:status:points|...
             SwingUtilities.invokeLater(() -> {
@@ -176,9 +179,12 @@ public class LobbyScreen extends JFrame {
                         sb.append("\n");
                     }
                 }
-                playerListArea.setText(sb.toString());
+                String text = sb.toString();
+                playerListArea.setText(text);
+                System.out.println("✅ [Lobby] Updated player list: " + text.split("\\n").length + " players");
             });
         } else if (msg.startsWith("ROOMS_LIST|")) {
+            System.out.println("✅ [Lobby] Processing ROOMS_LIST");
             String rooms = msg.substring("ROOMS_LIST|".length());
             SwingUtilities.invokeLater(() -> {
                 roomsModel.clear();
@@ -197,6 +203,7 @@ public class LobbyScreen extends JFrame {
                         }
                     }
                 }
+                System.out.println("✅ [Lobby] Updated rooms list: " + roomsModel.getSize() + " rooms");
             });
         } else if (msg.startsWith("ROOM_CREATED;")) {
             String roomName = msg.split(";")[1];

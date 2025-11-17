@@ -1,5 +1,6 @@
-package server;
+package server.core;
 
+import server.database.Database;
 import java.io.*;
 import java.net.*;
 import java.util.*;
@@ -70,13 +71,13 @@ import java.util.concurrent.*;
  */
 public class Server {
     // Dữ liệu dùng chung - Thread-safe collections
-    protected static Map<String, String> accounts = new HashMap<>(); // Username -> PasswordHash
-    protected static Map<String, RoomThread> rooms = new ConcurrentHashMap<>();
-    protected static List<ClientHandler> activeClients = Collections.synchronizedList(new ArrayList<>());
-    protected static Map<String, Integer> playerScores = new ConcurrentHashMap<>(); // Điểm của người chơi (cache)
+    public static Map<String, String> accounts = new HashMap<>(); // Username -> PasswordHash
+    public static Map<String, RoomThread> rooms = new ConcurrentHashMap<>();
+    public static List<ClientHandler> activeClients = Collections.synchronizedList(new ArrayList<>());
+    public static Map<String, Integer> playerScores = new ConcurrentHashMap<>(); // Điểm của người chơi (cache)
 
     // Database handler
-    protected static Database db;
+    public static Database db;
 
     public static void main(String[] args) {
         try (ServerSocket serverSocket = new ServerSocket(5000)) {
@@ -98,6 +99,18 @@ public class Server {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Tìm số phòng nhỏ nhất còn trống (Room_1, Room_2, ...)
+     * Nếu Room_1 trống thì trả về 1, không phải tăng mãi
+     */
+    public static synchronized int findSmallestAvailableRoomNumber() {
+        int roomNum = 1;
+        while (rooms.containsKey("Room_" + roomNum)) {
+            roomNum++;
+        }
+        return roomNum;
     }
 
     /**
