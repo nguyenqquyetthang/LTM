@@ -57,8 +57,8 @@ public class TurnManager {
 
     /**
      * Thông báo lượt hiện tại cho tất cả người chơi
-     * 📤 GỬI: YOUR_TURN hoặc WAIT
-     * 📨 NHẬN: Không nhận gì
+     * 📤 GỬI: "YOUR_TURN" (cho người được rút) hoặc "WAIT" (cho người khác)
+     * 📨 CLIENT NHẬN: GameScreen.java dòng 268-284
      */
     public void notifyCurrentTurn(List<ClientHandler> players) {
         if (players.isEmpty())
@@ -66,9 +66,9 @@ public class TurnManager {
 
         for (int i = 0; i < players.size(); i++) {
             if (i == currentTurn) {
-                players.get(i).sendMessage("YOUR_TURN");
+                players.get(i).sendMessage("YOUR_TURN"); // 📤 GỬI: "YOUR_TURN" → đến lượt bạn rút bài
             } else {
-                players.get(i).sendMessage("WAIT");
+                players.get(i).sendMessage("WAIT"); // 📤 GỬI: "WAIT" → chờ lượt
             }
         }
     }

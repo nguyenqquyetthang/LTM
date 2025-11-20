@@ -1,8 +1,5 @@
 package server.managers;
 
-
-
-
 import server.core.ClientHandler;
 import java.util.*;
 
@@ -40,19 +37,24 @@ public class BroadcastManager {
 
     /**
      * Broadcast ROOM_UPDATE message
+     * 📤 GỬI: "ROOM_UPDATE|roomName|hostIndex|player1,player2,..."
+     * 📨 CLIENT NHẬN: GameScreen.java dòng 382-390
+     * 
      * Format: ROOM_UPDATE|roomName|hostIndex|player1,player2,player3,...
      */
     public void broadcastRoomUpdate(int hostIndex) {
         String msg = buildRoomUpdateMessage(hostIndex);
-        broadcast(msg);
+        broadcast(msg); // 📤 GỬI: "ROOM_UPDATE|..." → cập nhật vị trí ngồi
     }
 
     /**
      * Send ROOM_UPDATE chỉ cho 1 client cụ thể
+     * 📤 GỬI: "ROOM_UPDATE|roomName|hostIndex|player1,player2,..."
+     * 📨 CLIENT NHẬN: GameScreen.java dòng 382-390
      */
     public void sendRoomUpdateTo(ClientHandler target, int hostIndex) {
         String msg = buildRoomUpdateMessage(hostIndex);
-        target.sendMessage(msg);
+        target.sendMessage(msg); // 📤 GỬI: "ROOM_UPDATE|..." → cập nhật vị trí ngồi (chỉ 1 người)
     }
 
     /**
@@ -77,6 +79,9 @@ public class BroadcastManager {
 
     /**
      * Broadcast READY_STATUS message
+     * 📤 GỬI: "READY_STATUS|user1:true|user2:false|..."
+     * 📨 CLIENT NHẬN: GameScreen.java dòng 406-444
+     * 
      * Format: READY_STATUS|user1:true|user2:false|...
      */
     public void broadcastReadyStatus() {
@@ -91,6 +96,6 @@ public class BroadcastManager {
 
         String msg = sb.toString();
         System.out.println("📡 Broadcasting: " + msg);
-        broadcast(msg);
+        broadcast(msg); // 📤 GỬI: "READY_STATUS|..." → trạng thái sẵn sàng của từng người
     }
 }

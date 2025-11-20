@@ -68,8 +68,11 @@ public class GameFlowManager {
         playerManager.setAllPlayersPlaying();
 
         // Thông báo bắt đầu ván
-        broadcastManager.broadcast("GAME_START;" + roomName);
-        broadcastManager.broadcast("SYSTEM Ván bài bắt đầu! Rút theo lượt, mỗi người tối đa 3 lá.");
+        broadcastManager.broadcast("GAME_START;" + roomName); // 📤 GỬI: "GAME_START;RoomName" → ván bài bắt đầu, reset
+                                                              // UI
+        broadcastManager.broadcast("SYSTEM Ván bài bắt đầu! Rút theo lượt, mỗi người tối đa 3 lá."); // 📤 GỬI: "SYSTEM
+                                                                                                     // ..." → thông báo
+                                                                                                     // hệ thống
         broadcastManager.broadcastRoomUpdate(playerManager.getHostIndex());
         gameState.getTurnManager().notifyCurrentTurn(players);
         gameState.getTurnManager().startTurnTimer();
@@ -90,7 +93,7 @@ public class GameFlowManager {
         int currentTurn = gameState.getTurnManager().getCurrentTurn();
         if (playerID != currentTurn) {
             if (playerID >= 0 && playerID < players.size())
-                players.get(playerID).sendMessage("NOT_YOUR_TURN");
+                players.get(playerID).sendMessage("NOT_YOUR_TURN"); // 📤 GỬI: "NOT_YOUR_TURN" → chưa đến lượt rút bài
             return;
         }
         drawCard(players.get(playerID));
@@ -106,13 +109,13 @@ public class GameFlowManager {
         int idx = players.indexOf(player);
         int currentTurn = gameState.getTurnManager().getCurrentTurn();
         if (idx != currentTurn) {
-            player.sendMessage("NOT_YOUR_TURN");
+            player.sendMessage("NOT_YOUR_TURN"); // 📤 GỬI: "NOT_YOUR_TURN" → chưa đến lượt rút bài
             return;
         }
 
         // Kiểm tra đã rút đủ chưa
         if (gameState.getGameLogic().hasDrawnMax(player.username)) {
-            player.sendMessage("SYSTEM Bạn đã rút đủ 3 lá!");
+            player.sendMessage("SYSTEM Bạn đã rút đủ 3 lá!"); // 📤 GỬI: "SYSTEM ..." → thông báo hệ thống
             nextTurn();
             return;
         }
@@ -120,14 +123,14 @@ public class GameFlowManager {
         // Rút bài
         Card drawn = gameState.getGameLogic().drawCardForPlayer(player.username);
         if (drawn == null) {
-            player.sendMessage("SYSTEM Hết bài!");
+            player.sendMessage("SYSTEM Hết bài!"); // 📤 GỬI: "SYSTEM ..." → thông báo hệ thống
             nextTurn();
             return;
         }
 
         // Gửi lá rút cho người chơi
         int cnt = gameState.getGameLogic().getDrawCount(player.username);
-        player.sendMessage("DRAW;" + drawn.toString());
+        player.sendMessage("DRAW;" + drawn.toString()); // 📤 GỬI: "DRAW;K♠" → lá bài vừa rút được
         System.out.println("🂠 " + player.username + " rút: " + drawn + " (" + cnt + "/3)");
 
         nextTurn();
@@ -171,7 +174,7 @@ public class GameFlowManager {
 
         // Broadcast toàn bộ bài
         String showAllMsg = gameState.getGameLogic().buildShowHandsMessage(players);
-        broadcastManager.broadcast(showAllMsg);
+        broadcastManager.broadcast(showAllMsg); // 📤 GỬI: "SHOW_HANDS_ALL|user1=K♠,Q♠,J♠|..." → lật tất cả bài
 
         // Xác định người thắng
         GameLogic.WinnerResult winnerResult = gameState.getGameLogic().determineWinner(ranks, modScores);
@@ -186,7 +189,7 @@ public class GameFlowManager {
         saveMatchResults(ranks, modScores, winner);
 
         // Reset cho ván mới
-        broadcastManager.broadcast("END;" + roomName);
+        broadcastManager.broadcast("END;" + roomName); // 📤 GỬI: "END;RoomName" → ván kết thúc, sẵn sàng ván mới
         playerManager.setAllPlayersBusy();
         gameState.getGameLogic().reset();
         broadcastManager.broadcastReadyStatus();
@@ -206,10 +209,17 @@ public class GameFlowManager {
 
         scoreManager.updateScores(winner, new ArrayList<>(), timeoutPlayers);
 
-        broadcastManager.broadcast("WINNER " + winner + " - Chiến thắng do đối thủ timeout!");
+        broadcastManager.broadcast("WINNER " + winner + " - Chiến thắng do đối thủ timeout!"); // 📤 GỬI: "WINNER ..." →
+                                                                                               // người thắng
         broadcastManager
-                .broadcast("RANKING|" + winner + ":" + Server.playerScores.get(winner) + ":+" + winnerPoints + "|");
-        broadcastManager.broadcast("END;" + roomName);
+                .broadcast("RANKING|" + winner + ":" + Server.playerScores.get(winner) + ":+" + winnerPoints + "|"); // 📤
+                                                                                                                     // GỬI:
+                                                                                                                     // "RANKING|..."
+                                                                                                                     // →
+                                                                                                                     // bảng
+                                                                                                                     // xếp
+                                                                                                                     // hạng
+        broadcastManager.broadcast("END;" + roomName); // 📤 GỬI: "END;RoomName" → ván kết thúc
 
         lastPlayer.setStatus("busy");
         Map<String, Boolean> playerReady = new HashMap<>();
@@ -238,13 +248,21 @@ public class GameFlowManager {
 
         // Gửi thông tin chi tiết về tay bài
         String handRanksMsg = gameState.getGameLogic().buildHandRanksMessage(ranks, modScores);
-        broadcastManager.broadcast(handRanksMsg);
+        broadcastManager.broadcast(handRanksMsg); // 📤 GỬI: "HAND_RANKS|user1:4:Straight Flush:530|..." → loại tay bài
 
         if (winner != null) {
             if (winnerRank.getCategory() == 1) {
-                broadcastManager.broadcast("WINNER " + winner + " tay=HighCard điểm=" + winnerModScore);
+                broadcastManager.broadcast("WINNER " + winner + " tay=HighCard điểm=" + winnerModScore); // 📤 GỬI:
+                                                                                                         // "WINNER
+                                                                                                         // player1
+                                                                                                         // tay=..." →
+                                                                                                         // người thắng
             } else {
-                broadcastManager.broadcast("WINNER " + winner + " tay=" + winnerRank.getCategoryName());
+                broadcastManager.broadcast("WINNER " + winner + " tay=" + winnerRank.getCategoryName()); // 📤 GỬI:
+                                                                                                         // "WINNER
+                                                                                                         // player1
+                                                                                                         // tay=..." →
+                                                                                                         // người thắng
             }
         }
 
@@ -257,7 +275,7 @@ public class GameFlowManager {
         }
 
         String rankingMsg = scoreManager.buildRankingMessage(sortedPlayers, scoreChanges);
-        broadcastManager.broadcast(rankingMsg);
+        broadcastManager.broadcast(rankingMsg); // 📤 GỬI: "RANKING|user1:15:+3|user2:8:-1|..." → bảng xếp hạng cuối ván
     }
 
     /**

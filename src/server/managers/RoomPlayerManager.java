@@ -42,10 +42,11 @@ public class RoomPlayerManager {
 
     /**
      * Thêm người chơi vào phòng
+     * 📤 GỬI: "ROOM_FULL" (nếu phòng đầy)
      */
     public synchronized boolean addPlayer(ClientHandler p) {
         if (players.size() >= MAX_PLAYERS) {
-            p.sendMessage("ROOM_FULL");
+            p.sendMessage("ROOM_FULL"); // 📤 GỬI: "ROOM_FULL" → phòng đầy (max 6 người)
             return false;
         }
         players.add(p);
@@ -96,11 +97,13 @@ public class RoomPlayerManager {
 
     /**
      * Cập nhật host sau khi có người rời
+     * 📤 GỬI: "YOU_ARE_HOST" (cho host mới)
+     * 📨 CLIENT NHẬN: GameScreen.java dòng 369-380
      */
     private void updateHostAfterRemoval(int removedIndex) {
         if (removedIndex == hostIndex && !players.isEmpty()) {
             hostIndex = 0;
-            players.get(0).sendMessage("YOU_ARE_HOST");
+            players.get(0).sendMessage("YOU_ARE_HOST"); // 📤 GỬI: "YOU_ARE_HOST" → trở thành host mới
         } else if (removedIndex < hostIndex) {
             hostIndex--;
         }

@@ -90,7 +90,10 @@ public class KickManager {
         gameState.getTurnManager().getTimeoutPlayers().add(username);
 
         // Thông báo bị loại
-        timedOut.sendMessage("ELIMINATED;Timeout - không rút trong 10s. Bạn bị trừ 1 điểm!");
+        timedOut.sendMessage("ELIMINATED;Timeout - không rút trong 10s. Bạn bị trừ 1 điểm!"); // 📤 GỬI:
+                                                                                              // "ELIMINATED;reason" →
+                                                                                              // bị timeout, kick khỏi
+                                                                                              // phòng
 
         // Loại khỏi phòng
         players.remove(currentTurn);
@@ -102,7 +105,7 @@ public class KickManager {
         int newHostIndex = playerManager.getHostIndex();
         if (currentTurn == newHostIndex && !players.isEmpty()) {
             // Host bị timeout - chọn host mới
-            players.get(0).sendMessage("YOU_ARE_HOST");
+            players.get(0).sendMessage("YOU_ARE_HOST"); // 📤 GỬI: "YOU_ARE_HOST" → trở thành host mới
         } else if (newHostIndex > currentTurn) {
             // Điều chỉnh host index
         }

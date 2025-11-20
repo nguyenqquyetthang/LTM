@@ -147,7 +147,7 @@ public class ClientHandler extends Thread {
             out = new DataOutputStream(socket.getOutputStream());
 
             // Đăng nhập
-            String loginMsg = in.readUTF();
+            String loginMsg = in.readUTF(); // 📨 NHẬN: "LOGIN;username;password"
             if (loginMsg.startsWith("LOGIN;")) {
                 String[] parts = loginMsg.split(";");
                 String user = parts[1];
@@ -156,15 +156,15 @@ public class ClientHandler extends Thread {
                 AuthenticationHandler.LoginResult loginResult = authHandler.handleLogin(user, pass);
 
                 if (loginResult.success) {
-                    out.writeUTF("LOGIN_OK");
+                    out.writeUTF("LOGIN_OK"); // 📤 GỬI: "LOGIN_OK" → đăng nhập thành công
                     username = user;
                     Server.playerScores.putIfAbsent(user, loginResult.points);
                     addActiveClient();
                     System.out.println("✅ " + user + " đăng nhập thành công.");
                     sendPlayerListToClient(); // snapshot
-                    Server.broadcastPlayerList(); // thông báo mọi người
+                    Server.broadcastPlayerList(); // thong bao moi nguoi
                 } else {
-                    out.writeUTF("LOGIN_FAIL");
+                    out.writeUTF("LOGIN_FAIL"); // 📤 GỬI: "LOGIN_FAIL" → đăng nhập thất bại
                     socket.close();
                     return;
                 }
@@ -212,19 +212,19 @@ public class ClientHandler extends Thread {
         // INFO REQUESTS - Database queries
         // ═══════════════════════════════════════════════════════════════
 
-        if (msg.equalsIgnoreCase("GET_PLAYER_LIST")) {
-            sendPlayerListToClient();
+        if (msg.equalsIgnoreCase("GET_PLAYER_LIST")) { // 📨 NHẬN: "GET_PLAYER_LIST" → request danh sách người online
+            sendPlayerListToClient(); // 📤 GỬI: "PLAYER_LIST|user1:status:pts|..."
             return true;
         }
 
-        if (msg.equalsIgnoreCase("GET_ROOMS")) {
-            sendRoomsListToClient();
+        if (msg.equalsIgnoreCase("GET_ROOMS")) { // 📨 NHẬN: "GET_ROOMS" → request danh sách phòng
+            sendRoomsListToClient(); // 📤 GỬI: "ROOMS_LIST|room1:count/6|..."
             return true;
         }
 
-        if (msg.equalsIgnoreCase("GET_HISTORY")) {
+        if (msg.equalsIgnoreCase("GET_HISTORY")) { // 📨 NHẬN: "GET_HISTORY" → request lịch sử trận đấu
             String history = db.getMatchHistory(20);
-            sendMessage("HISTORY_DATA|" + history);
+            sendMessage("HISTORY_DATA|" + history); // 📤 GỬI: "HISTORY_DATA|matchId|startTime|..."
             return true;
         }
 
@@ -234,15 +234,15 @@ public class ClientHandler extends Thread {
             return true;
         }
 
-        if (msg.startsWith("GET_MATCH_DETAIL;")) {
+        if (msg.startsWith("GET_MATCH_DETAIL;")) { // 📨 NHẬN: "GET_MATCH_DETAIL;matchId" → request chi tiết trận đấu
             String[] parts = msg.split(";");
             if (parts.length >= 2) {
                 try {
                     int matchId = Integer.parseInt(parts[1]);
                     String detail = db.getMatchDetail(matchId);
-                    sendMessage("MATCH_DETAIL_DATA|" + detail);
+                    sendMessage("MATCH_DETAIL_DATA|" + detail); // 📤 GỬI: "MATCH_DETAIL_DATA|MATCH|...|RESULT|..."
                 } catch (NumberFormatException ex) {
-                    sendMessage("MATCH_DETAIL_DATA|ERROR Invalid MatchID");
+                    sendMessage("MATCH_DETAIL_DATA|ERROR Invalid MatchID"); // 📤 GỬI: "MATCH_DETAIL_DATA|ERROR ..."
                 }
             }
             return true;
@@ -252,38 +252,39 @@ public class ClientHandler extends Thread {
         // ROOM COMMANDS
         // ═══════════════════════════════════════════════════════════════
 
-        if (msg.equalsIgnoreCase("CREATE")) {
+        if (msg.equalsIgnoreCase("CREATE")) { // 📨 NHẬN: "CREATE" → tạo phòng mới
             RoomCommandHandler.RoomResult result = roomHandler.handleCreateRoom(this);
             if (result.success) {
                 currentRoom = result.roomName;
-                out.writeUTF("ROOM_CREATED;" + result.roomName);
+                out.writeUTF("ROOM_CREATED;" + result.roomName); // 📤 GỬI: "ROOM_CREATED;RoomName" → tạo phòng thành
+                                                                 // công
                 Server.broadcastRoomsList();
             } else {
-                out.writeUTF("CREATE_FAIL;" + result.status);
+                out.writeUTF("CREATE_FAIL;" + result.status); // 📤 GỬI: "CREATE_FAIL;..." → tạo phòng thất bại
             }
             return true;
         }
 
-        if (msg.startsWith("JOIN;")) {
+        if (msg.startsWith("JOIN;")) { // 📨 NHẬN: "JOIN;RoomName" → tham gia phòng
             String roomName = msg.split(";")[1];
             RoomCommandHandler.RoomResult result = roomHandler.handleJoinRoom(this, roomName);
             if (result.success) {
                 currentRoom = result.roomName;
-                out.writeUTF("JOIN_OK;" + result.roomName);
+                out.writeUTF("JOIN_OK;" + result.roomName); // 📤 GỬI: "JOIN_OK;RoomName" → tham gia thành công
                 status = "busy";
                 Server.broadcastRoomsList();
             } else if (result.status.equals("FULL")) {
-                out.writeUTF("ROOM_FULL");
+                out.writeUTF("ROOM_FULL"); // 📤 GỬI: "ROOM_FULL" → phòng đầy
             } else {
-                out.writeUTF("JOIN_FAIL");
+                out.writeUTF("JOIN_FAIL"); // 📤 GỬI: "JOIN_FAIL" → tham gia thất bại
             }
             return true;
         }
 
-        if (msg.startsWith("READY;")) {
+        if (msg.startsWith("READY;")) { // 📨 NHẬN: "READY;roomName" → sẵn sàng chơi
             String roomName = msg.split(";")[1];
             if (currentRoom != null && currentRoom.equals(roomName) && rooms.containsKey(currentRoom)) {
-                rooms.get(currentRoom).setPlayerReady(username, true);
+                rooms.get(currentRoom).setPlayerReady(username, true); // → broadcast "READY_STATUS|..."
             }
             return true;
         }
@@ -297,11 +298,11 @@ public class ClientHandler extends Thread {
             return true;
         }
 
-        if (msg.startsWith("START;")) {
+        if (msg.startsWith("START;")) { // 📨 NHẬN: "START;roomName" → host bắt đầu game
             String roomName = msg.split(";")[1];
             RoomThread r = rooms.get(roomName);
             if (r != null) {
-                r.startGame();
+                r.startGame(); // → broadcast "GAME_START;RoomName"
             }
             return true;
         }
@@ -321,25 +322,25 @@ public class ClientHandler extends Thread {
         // GAME COMMANDS
         // ═══════════════════════════════════════════════════════════════
 
-        if (msg.startsWith("DRAW;")) {
+        if (msg.startsWith("DRAW;")) { // 📨 NHẬN: "DRAW;roomName" → rút bài
             String roomName = msg.split(";")[1];
             if (currentRoom != null && currentRoom.equals(roomName) && rooms.containsKey(currentRoom)) {
-                rooms.get(currentRoom).drawCard(this);
+                rooms.get(currentRoom).drawCard(this); // → gửi "DRAW;K♠" hoặc "NOT_YOUR_TURN"
             }
             return true;
         }
 
-        if (msg.startsWith("KICK_PLAYER;")) {
+        if (msg.startsWith("KICK_PLAYER;")) { // 📨 NHẬN: "KICK_PLAYER;targetUsername" → kick người chơi
             String targetUsername = msg.split(";")[1];
             if (currentRoom != null && rooms.containsKey(currentRoom)) {
-                rooms.get(currentRoom).kickPlayer(targetUsername, this);
+                rooms.get(currentRoom).kickPlayer(targetUsername, this); // → gửi "KICKED;reason" cho target
             }
             return true;
         }
 
-        if (msg.startsWith("INVITE;")) {
+        if (msg.startsWith("INVITE;")) { // 📨 NHẬN: "INVITE;targetUsername" → mời người vào phòng
             String targetUsername = msg.split(";")[1];
-            gameHandler.handleInvite(this, targetUsername);
+            gameHandler.handleInvite(this, targetUsername); // → gửi "INVITE;fromUser;roomName" cho target
             return true;
         }
 
@@ -365,6 +366,7 @@ public class ClientHandler extends Thread {
         Server.broadcastPlayerList();
     }
 
+    // CurrentRoom phòng hiện tại
     public String getCurrentRoom() {
         return currentRoom;
     }

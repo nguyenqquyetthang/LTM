@@ -62,7 +62,8 @@ public class LobbyScreen extends JFrame {
         // ===== Request danh sách người online + phòng ngay khi vào lobby =====
         try {
             System.out.println("📤 [Lobby] Request GET_PLAYER_LIST");
-            network.sendMsg("GET_PLAYER_LIST"); // 📤 GỬI: "GET_PLAYER_LIST" → 📨 NHẬN: "PLAYER_LIST|user1:status:pts|user2:..."
+            network.sendMsg("GET_PLAYER_LIST"); // 📤 GỬI: "GET_PLAYER_LIST" → 📨 NHẬN:
+                                                // "PLAYER_LIST|user1:status:pts|user2:..."
             System.out.println("📤 [Lobby] Request GET_ROOMS");
             network.sendMsg("GET_ROOMS"); // 📤 GỬI: "GET_ROOMS" → 📨 NHẬN: "ROOMS_LIST|room1:count/6|room2:..."
         } catch (IOException e) {
@@ -116,7 +117,8 @@ public class LobbyScreen extends JFrame {
             }
             if (room != null && !room.isEmpty()) {
                 try {
-                    network.sendMsg("JOIN;" + room); // 📤 GỬI: "JOIN;roomName" → 📨 NHẬN: "JOIN_OK;roomName" hoặc "JOIN_FAIL" hoặc "ROOM_FULL"
+                    network.sendMsg("JOIN;" + room); // 📤 GỬI: "JOIN;roomName" → 📨 NHẬN: "JOIN_OK;roomName" hoặc
+                                                     // "JOIN_FAIL" hoặc "ROOM_FULL"
                 } catch (IOException ex) {
                     JOptionPane.showMessageDialog(this, "❌ Lỗi khi gửi yêu cầu tham gia phòng.");
                 }
@@ -126,7 +128,8 @@ public class LobbyScreen extends JFrame {
         // Nút lịch sử (danh sách)
         btnHistory.addActionListener(e -> {
             try {
-                network.sendMsg("GET_HISTORY"); // 📤 GỬI: "GET_HISTORY" → 📨 NHẬN: "HISTORY_DATA|matchId:date:winner|..."
+                network.sendMsg("GET_HISTORY"); // 📤 GỬI: "GET_HISTORY" → 📨 NHẬN:
+                                                // "HISTORY_DATA|matchId:date:winner|..."
             } catch (IOException ex) {
                 JOptionPane.showMessageDialog(this, "❌ Lỗi khi lấy lịch sử.");
             }
@@ -243,10 +246,12 @@ public class LobbyScreen extends JFrame {
                     }
                 });
             }
-        } else if (msg.startsWith("HISTORY_DATA|")) { // 📨 NHẬN: "HISTORY_DATA|matchId:date:winner:loser1:loser2:...|..."
+        } else if (msg.startsWith("HISTORY_DATA|")) { // 📨 NHẬN:
+                                                      // "HISTORY_DATA|matchId:date:winner:loser1:loser2:...|..."
             String data = msg.substring("HISTORY_DATA|".length());
             SwingUtilities.invokeLater(() -> showHistoryDialog(data));
-        } else if (msg.startsWith("MATCH_DETAIL_DATA|")) { // 📨 NHẬN: "MATCH_DETAIL_DATA|matchInfo|player1:cards:rank|player2:...|..."
+        } else if (msg.startsWith("MATCH_DETAIL_DATA|")) { // 📨 NHẬN:
+                                                           // "MATCH_DETAIL_DATA|matchInfo|player1:cards:rank|player2:...|..."
             String data = msg.substring("MATCH_DETAIL_DATA|".length());
             SwingUtilities.invokeLater(() -> showMatchDetailDialog(data));
         }
@@ -294,7 +299,8 @@ public class LobbyScreen extends JFrame {
                         String matchIdStr = (String) table.getValueAt(row, 0);
                         if (matchIdStr != null && !matchIdStr.isEmpty()) {
                             try {
-                                network.sendMsg("GET_MATCH_DETAIL;" + matchIdStr); // 📤 GỬI: "GET_MATCH_DETAIL;matchId" → 📨 NHẬN: "MATCH_DETAIL_DATA|..."
+                                network.sendMsg("GET_MATCH_DETAIL;" + matchIdStr); // 📤 GỬI: "GET_MATCH_DETAIL;matchId"
+                                                                                   // → 📨 NHẬN: "MATCH_DETAIL_DATA|..."
                             } catch (IOException ex) {
                                 JOptionPane.showMessageDialog(dialog, "❌ Lỗi yêu cầu chi tiết trận.");
                             }

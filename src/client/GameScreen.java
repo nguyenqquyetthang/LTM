@@ -336,7 +336,8 @@ public class GameScreen extends JFrame {
         // ═════════════════════════════════════════════════════════════════════════
         try {
             network.sendMsg("GET_PLAYER_LIST"); // 📤 GỬI: "GET_PLAYER_LIST" → 📨 NHẬN: "PLAYER_LIST|..."
-            network.sendMsg("GET_ROOM_UPDATE;" + roomName); // 📤 GỬI: "GET_ROOM_UPDATE;roomName" → 📨 NHẬN: "ROOM_UPDATE|..."
+            network.sendMsg("GET_ROOM_UPDATE;" + roomName); // 📤 GỬI: "GET_ROOM_UPDATE;roomName" → 📨 NHẬN:
+                                                            // "ROOM_UPDATE|..."
         } catch (IOException e) {
             System.err.println("⚠️ Không thể request danh sách người chơi");
         }
@@ -364,7 +365,8 @@ public class GameScreen extends JFrame {
         // ═════════════════════════════════════════════════════════════════════════
         btnReady.addActionListener(e -> {
             try {
-                network.sendMsg("READY;" + roomName); // 📤 GỬI: "READY;roomName" → 📨 NHẬN: "READY_STATUS|..." (broadcast)
+                network.sendMsg("READY;" + roomName); // 📤 GỬI: "READY;roomName" → 📨 NHẬN: "READY_STATUS|..."
+                                                      // (broadcast)
                 btnReady.setEnabled(false);
                 btnReady.setText("✅ Đã sẵn sàng");
             } catch (IOException ex) {
@@ -384,7 +386,8 @@ public class GameScreen extends JFrame {
         btnDraw.addActionListener(e -> {
             if (canDraw && cardsDrawn < 3) {
                 try {
-                    network.sendMsg("DRAW;" + roomName); // 📤 GỬI: "DRAW;roomName" → 📨 NHẬN: "DRAW;K♠" (lá bài rút được)
+                    network.sendMsg("DRAW;" + roomName); // 📤 GỬI: "DRAW;roomName" → 📨 NHẬN: "DRAW;K♠" (lá bài rút
+                                                         // được)
                     btnDraw.setEnabled(false);
                 } catch (IOException ex) {
                     JOptionPane.showMessageDialog(this, "❌ Lỗi gửi yêu cầu rút bài.");
@@ -534,7 +537,8 @@ public class GameScreen extends JFrame {
                     }
                 }
             });
-        } else if (msg.startsWith("SHOW_HANDS_ALL|")) { // 📨 NHẬN: "SHOW_HANDS_ALL|user1=K♠,Q♠,J♠|user2=..." (lật tất cả bài)
+        } else if (msg.startsWith("SHOW_HANDS_ALL|")) { // 📨 NHẬN: "SHOW_HANDS_ALL|user1=K♠,Q♠,J♠|user2=..." (lật tất
+                                                        // cả bài)
             String payload = msg.substring("SHOW_HANDS_ALL|".length());
             SwingUtilities.invokeLater(() -> {
                 // Map username->hand
@@ -624,7 +628,8 @@ public class GameScreen extends JFrame {
                 System.out.println(
                         "[DEBUG] YOU_ARE_HOST: Updated UI - btnStart visible, btnReady hidden, btnKick enabled");
             });
-        } else if (msg.startsWith("ROOM_UPDATE")) { // 📨 NHẬN: "ROOM_UPDATE|room|host|player1:ready|player2:..." (cập nhật danh sách người chơi)
+        } else if (msg.startsWith("ROOM_UPDATE")) { // 📨 NHẬN: "ROOM_UPDATE|room|host|player1:ready|player2:..." (cập
+                                                    // nhật danh sách người chơi)
             // Format: ROOM_UPDATE|roomName|hostIndex|player1,player2,player3
             SwingUtilities.invokeLater(() -> {
                 String[] parts = msg.split("\\|");
@@ -633,7 +638,8 @@ public class GameScreen extends JFrame {
                     updateRoomPlayers(players);
                 }
             });
-        } else if (msg.startsWith("PLAYER_LIST")) { // 📨 NHẬN: "PLAYER_LIST|user1:status:pts|..." (danh sách người online)
+        } else if (msg.startsWith("PLAYER_LIST")) { // 📨 NHẬN: "PLAYER_LIST|user1:status:pts|..." (danh sách người
+                                                    // online)
             // Format: PLAYER_LIST|username:status|...
             SwingUtilities.invokeLater(() -> {
                 String[] parts = msg.split("\\|");
@@ -662,7 +668,8 @@ public class GameScreen extends JFrame {
                     }
                 }
             });
-        } else if (msg.startsWith("READY_STATUS|")) { // 📨 NHẬN: "READY_STATUS|user1:true|user2:false|..." (trạng thái sẵn sàng)
+        } else if (msg.startsWith("READY_STATUS|")) { // 📨 NHẬN: "READY_STATUS|user1:true|user2:false|..." (trạng thái
+                                                      // sẵn sàng)
             // Format: READY_STATUS|user1:true|user2:false|...
             SwingUtilities.invokeLater(() -> {
                 String data = msg.substring("READY_STATUS|".length());
@@ -717,7 +724,8 @@ public class GameScreen extends JFrame {
             SwingUtilities.invokeLater(() -> {
                 JOptionPane.showMessageDialog(this, "❌ Chỉ chủ phòng mới có quyền này!");
             });
-        } else if (msg.startsWith("HAND_RANKS|")) { // 📨 NHẬN: "HAND_RANKS|user1:4:Straight Flush:530|..." (loại tay bài)
+        } else if (msg.startsWith("HAND_RANKS|")) { // 📨 NHẬN: "HAND_RANKS|user1:4:Straight Flush:530|..." (loại tay
+                                                    // bài)
             // Format: HAND_RANKS|user1:category:categoryName:score|user2:...
             String payload = msg.substring("HAND_RANKS|".length());
             SwingUtilities.invokeLater(() -> {
@@ -1123,7 +1131,8 @@ public class GameScreen extends JFrame {
 
         if (selected != null) {
             try {
-                network.sendMsg("KICK_PLAYER;" + selected); // 📤 GỬI: "KICK_PLAYER;targetUsername" → 📨 NHẬN: "KICKED;reason" (cho người bị kick)
+                network.sendMsg("KICK_PLAYER;" + selected); // 📤 GỬI: "KICK_PLAYER;targetUsername" → 📨 NHẬN:
+                                                            // "KICKED;reason" (cho người bị kick)
             } catch (IOException ex) {
                 JOptionPane.showMessageDialog(this, "❌ Lỗi kick người chơi.");
             }

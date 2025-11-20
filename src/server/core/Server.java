@@ -165,7 +165,7 @@ public class Server {
 
         // Send message bên ngoài synchronized block để tránh block lâu
         for (ClientHandler client : snapshot) {
-            client.sendMessage(msg);
+            client.sendMessage(msg); // 📤 GỬI: "PLAYER_LIST|user1:status:pts|..." → danh sách người online
         }
     }
 
@@ -217,7 +217,7 @@ public class Server {
         }
 
         for (ClientHandler client : snapshot) {
-            client.sendMessage(msg);
+            client.sendMessage(msg); // 📤 GỬI: "ROOMS_LIST|room1:count/6|..." → danh sách phòng
         }
     }
 }

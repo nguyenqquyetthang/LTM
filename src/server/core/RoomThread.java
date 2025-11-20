@@ -241,15 +241,17 @@ public class RoomThread extends Thread {
 
         switch (result.status) {
             case GAME_RUNNING:
-                requester.sendMessage("KICK_BLOCKED;Không thể kick khi đang chơi");
+                requester.sendMessage("KICK_BLOCKED;Không thể kick khi đang chơi"); // 📤 GỬI: "KICK_BLOCKED;..." →
+                                                                                    // không thể kick
                 return;
             case NOT_HOST:
-                requester.sendMessage("NOT_HOST");
+                requester.sendMessage("NOT_HOST"); // 📤 GỬI: "NOT_HOST" → không phải host
                 return;
             case PLAYER_NOT_FOUND:
                 return;
             case CANNOT_KICK_SELF:
-                requester.sendMessage("KICK_BLOCKED;Không thể kick chính mình");
+                requester.sendMessage("KICK_BLOCKED;Không thể kick chính mình"); // 📤 GỬI: "KICK_BLOCKED;..." → không
+                                                                                 // thể kick
                 return;
             case SUCCESS:
                 ClientHandler targetPlayer = result.targetPlayer;
@@ -262,7 +264,8 @@ public class RoomThread extends Thread {
 
                 // Chỉ gửi KICKED cho người bị kick
                 // LobbyScreen sẽ tự request GET_PLAYER_LIST và GET_ROOMS
-                targetPlayer.sendMessage("KICKED;Bị chủ phòng kick");
+                targetPlayer.sendMessage("KICKED;Bị chủ phòng kick"); // 📤 GỬI: "KICKED;reason" → bị kick, quay về
+                                                                      // lobby
                 System.out.println("📤 [Server] Sent KICKED to " + targetUsername);
 
                 // Broadcast cho các client KHÁC (không gửi cho người bị kick)
